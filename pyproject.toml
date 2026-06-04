@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "valmontage"
+version = "0.1.0"
+description = "Beat-synced Valorant highlight montage builder"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "numpy",
+    "librosa",
+    "soundfile",
+    "opencv-python",
+    "pyyaml",
+    "yt-dlp",
+]
+
+[project.scripts]
+valmontage = "valmontage.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

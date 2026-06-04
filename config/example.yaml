@@ -1,0 +1,50 @@
+# Per-render configuration. Copy this per match (the agent changes each game).
+
+# --- Inputs ---
+video: samples/clip.mp4
+audio: samples/song.wav
+
+# --- Player identity (used by kill detection) ---
+player_name: "YourRiotName"
+agent: "jett"            # lowercase agent id; selects assets/agent_icons/<agent>.png
+
+# --- Render mode ---
+mode: beatmatch          # beatmatch | freeze_finisher
+
+# --- Output ---
+output:
+  path: output/montage.mp4
+  width: 1920
+  height: 1080
+  fps: 60
+  encoder: h264_nvenc    # NVENC (RTX 4060); falls back to libx264 if unavailable
+
+# --- Kill detection ---
+killdetect:
+  mode: template         # template | manual
+  roi: [0.62, 0.0, 1.0, 0.30]   # top-right region as fractions [x1,y1,x2,y2]
+  match_threshold: 0.72
+  min_gap_seconds: 1.0          # debounce repeated matches of the same kill
+  manual_timestamps: []          # used when mode: manual, e.g. [12.4, 19.8, 27.1]
+
+# --- Style / effects (building blocks for both modes) ---
+style:
+  grade: teal_orange     # teal_orange | contrast_boost | vignette | none
+  lut: null              # optional path to a .cube LUT (overrides grade if set)
+  zoom:
+    type: ease_in        # ease_in (slow push) | punch (quick zoom on beat)
+    amount: 1.12
+  transition:
+    type: crossfade      # eased xfade between clips
+    duration: 0.25
+  speed_ramp: true       # brief slow->fast going into each kill
+  slowmo_ending:
+    enabled: true
+    factor: 0.4          # 0.4 = 40% speed
+    interpolate: true    # ffmpeg minterpolate for smooth slow-mo
+
+# --- Beat-match tuning ---
+beatmatch:
+  clip_pre_seconds: 0.6  # window before each kill
+  clip_post_seconds: 0.9 # window after each kill
+  kills_per_beat: 1

@@ -40,6 +40,12 @@ ENV/
 *.3gp
 *.ts
 
+# ---- Project working dirs (keep the folder, ignore contents) ----
+/output/*
+!/output/.gitkeep
+/samples/*
+!/samples/.gitkeep
+
 # ---- Audio files ----
 *.mp3
 *.wav
