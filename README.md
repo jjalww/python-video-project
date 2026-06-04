@@ -36,6 +36,23 @@ python -m valmontage beats "https://youtu.be/..." --out output\beats.json
 Prints BPM, beat count, and the first beats; `--out` writes the full result
 (BPM, beats[], onsets[], duration) to JSON.
 
+## Phase 2 — kill detection
+```powershell
+# template mode: scan killfeed for the player's agent portrait
+python -m valmontage kills samples\clip.mp4 --template assets\agent_icons\neon.png `
+    --player Zayn --agent neon --out output\kills.json --debug output\kills_debug.mp4
+# manual fallback: supply timestamps yourself
+python -m valmontage kills samples\clip.mp4 --manual 9.4,38.3,40.7,42.3 --out output\kills.json
+```
+Detects kills by matching the agent's (unique) killfeed portrait in the top-right
+ROI; counts rising edges of the portrait count so multikills register; rejects
+deaths (victim-side red nameplate). `--debug` writes an overlay video to verify.
+
+Calibrate the ROI/template for a new clip with:
+```powershell
+python tests\inspect_roi.py output\_frames\full_43.png 950 50 120 100 --scale 8
+```
+
 ## Project layout
 ```
 src/valmontage/
