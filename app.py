@@ -186,7 +186,14 @@ class MontageApp:
         ttk.Label(self.adv_ff, text="FREEZE-FINISHER", style="Tag.TLabel").grid(
             row=0, column=0, columnspan=4, sticky="w")
         self.aftermath = self._spin(self.adv_ff, 1, 0, "Play-out after kill (s)", 5.0, 0, 15, 0.5)
-        self.freeze_dur = self._spin(self.adv_ff, 1, 2, "Freeze hold (s)", 2.5, 1.0, 6.0, 0.5)
+        self.freeze_dur = self._spin(self.adv_ff, 1, 2, "Freeze hold (s)", 3.0, 1.0, 8.0, 0.5)
+        ttk.Label(self.adv_ff, text="Caption").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+        self.caption = tk.StringVar(value="auto")
+        ttk.Entry(self.adv_ff, textvariable=self.caption, width=14).grid(
+            row=2, column=1, sticky="w", pady=4)
+        self.spotlight = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.adv_ff, text="Spotlight", variable=self.spotlight).grid(
+            row=2, column=2, sticky="w", padx=6, pady=4)
 
         self.adv.grid_remove()  # hidden until ticked
         r += 1
@@ -389,7 +396,9 @@ class MontageApp:
             mode=self.mode.get(),
             video=clip, audio=song, kills=kills, out_path=out,
             grade=self.grade.get(), vignette=bool(self.vignette.get()),
-            zoom=bool(self.zoom.get()), **numbers,
+            zoom=bool(self.zoom.get()),
+            spotlight=bool(self.spotlight.get()), caption=self.caption.get().strip(),
+            **numbers,
         )
         self._start(self._work_render, params)
 
@@ -423,6 +432,7 @@ class MontageApp:
             return render_freeze_finisher(
                 video, audio, params["kills"], params["out_path"],
                 aftermath_dur=params["aftermath_dur"], freeze_dur=params["freeze_dur"],
+                spotlight=params["spotlight"], caption=params["caption"],
                 **common)
         from valmontage.modes.beatmatch import render_beatmatch
         return render_beatmatch(

@@ -34,8 +34,9 @@ def render_freeze_finisher(
     beats_per_clip: int | None = None, encoder: str = "h264_nvenc",
     music_start: float | None = None, pre_roll: float = 0.25,
     kill_offset: float = -0.30, aftermath_dur: float = 5.0,
-    freeze_dur: float = 2.5, freeze_zoom: float = 0.12, flash: float = 0.0,
+    freeze_dur: float = 3.0, freeze_zoom: float = 0.12, flash: float = 0.1,
     freeze_fade: float = 1.2, xfade: float = 0.22,
+    spotlight: bool = True, caption: str = "auto",
     work_dir: str | Path = "output/_work",
 ) -> Path:
     video, out_path = Path(video), Path(out_path)
@@ -115,21 +116,27 @@ def render_freeze_finisher(
         seg_files.append(dst)
         print(f"    clip {i}: src {seg.source_in:.2f}+{seg.source_dur:.2f}s")
 
-    # 2) the freeze: grab the final frame of the last shot and hold it (gentle
-    #    push + grade + vignette), fading to black as the song settles.
+    # 2) the freeze: grab the final frame of the last shot and hold it (push +
+    #    grade + spotlight vignette + an achievement banner), fading to black as
+    #    the song settles -- the reference edit's finisher look.
+    if caption == "auto":  # name the moment from how many kills are in the montage
+        caption = {1: "", 2: "DOUBLE KILL", 3: "TRIPLE KILL",
+                   4: "QUAD KILL", 5: "ACE"}.get(len(kills), f"{len(kills)} KILLS")
     frame_png = work / "freeze.png"
     ffmpeg.extract_frame(video, freeze_at, frame_png)
     fz_vf = build_freeze_vf(width, height, fps, freeze_dur, grade=grade, lut=lut,
-                            vignette=vignette, zoom_amount=freeze_zoom,
-                            flash=flash, fade_out=freeze_fade)
+                            vignette=vignette, spotlight=spotlight,
+                            zoom_amount=freeze_zoom, flash=flash,
+                            fade_out=freeze_fade, caption=caption)
     fz_dst = work / f"fz_{len(segments):02d}.mp4"
     ffmpeg.run(["-loop", "1", "-t", f"{freeze_dur:.3f}", "-i", str(frame_png),
                 "-vf", fz_vf, "-r", f"{fps:g}",
                 *ffmpeg.video_encoder_args(encoder), str(fz_dst)])
     seg_files.append(fz_dst)
     aftermath = max(0.0, freeze_at - (climax[-1] + kill_offset))
+    badge = f', "{caption}" badge' if caption else ""
     print(f"    flow {aftermath:.1f}s past the last kill, then freeze "
-          f"@ {freeze_at:.2f}s held {freeze_dur:.1f}s")
+          f"@ {freeze_at:.2f}s held {freeze_dur:.1f}s{badge}")
 
     # 3) lay the song from the drop; it plays under the montage and fades out
     #    over the freeze, so the music ends right as the picture locks.

@@ -137,6 +137,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             beats_per_clip=args.beats_per_clip, encoder=args.encoder,
             music_start=args.music_start, pre_roll=args.pre_roll,
             aftermath_dur=args.aftermath, freeze_dur=args.freeze_dur,
+            spotlight=args.spotlight, caption=args.caption,
         )
     print(f"Done -> {out}")
     return 0
@@ -195,8 +196,13 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--aftermath", type=float, default=5.0,
                    help="freeze-finisher: seconds to keep playing past the last "
                         "kill before freezing")
-    r.add_argument("--freeze-dur", dest="freeze_dur", type=float, default=2.5,
+    r.add_argument("--freeze-dur", dest="freeze_dur", type=float, default=3.0,
                    help="freeze-finisher: how long to hold the frozen final frame")
+    r.add_argument("--caption", default="auto",
+                   help="freeze-finisher: banner over the freeze (e.g. ACE); "
+                        "'auto' names it from the kill count, '' for none")
+    r.add_argument("--no-spotlight", dest="spotlight", action="store_false",
+                   help="freeze-finisher: disable the heavy spotlight vignette")
     r.set_defaults(func=_cmd_render)
 
     return parser

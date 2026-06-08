@@ -8,6 +8,8 @@ filter separators.
 
 from __future__ import annotations
 
+import os
+
 from .plan import Segment
 
 GRADES = {
@@ -77,16 +79,37 @@ def build_segment_vf(
     return ",".join(parts)
 
 
+DEFAULT_BADGE_FONT = r"C:\Windows\Fonts\ariblk.ttf"  # Arial Black — bold banner
+
+
+def _badge_filter(text: str, font: str, height: int) -> str | None:
+    """A centred bold banner over the freeze (e.g. 'ACE' / 'TRIPLE KILL'), like
+    the reference edit's achievement callout. Returns None if there's no usable
+    text. Only alnum/space/-/! survive so the drawtext string never needs
+    escaping; the font path is escaped the same way LUT paths are.
+    """
+    safe = "".join(c for c in text.upper() if c.isalnum() or c in " -!").strip()
+    if not safe or not os.path.isfile(font):  # no text, or font missing -> skip
+        return None
+    f = font.replace("\\", "/").replace(":", "\\:")
+    fs = max(20, int(height * 0.06))
+    return (f"drawtext=fontfile='{f}':text='{safe}':fontcolor=white:fontsize={fs}:"
+            f"box=1:boxcolor=black@0.45:boxborderw={int(fs * 0.55)}:"
+            f"x=(w-text_w)/2:y={int(height * 0.11)}")
+
+
 def build_freeze_vf(
     width: int, height: int, fps: float, freeze_dur: float,
     *, grade: str = "teal_orange", lut: str | None = None,
-    vignette: bool = True, zoom_amount: float = 0.22,
-    flash: float = 0.10, fade_out: float = 1.0,
+    vignette: bool = True, spotlight: bool = True, zoom_amount: float = 0.12,
+    flash: float = 0.10, flash_color: str = "black", fade_out: float = 1.2,
+    caption: str = "", caption_font: str = DEFAULT_BADGE_FONT,
 ) -> str:
     """Filter chain for the freeze-finisher climax: a single held frame that
-    punches in, flashes white on the hit, takes an intensified grade, then
-    fades to black as the song settles. Fed a looped still image, so ``t`` runs
-    0..freeze_dur across the hold.
+    eases in, takes an intensified grade, gets a heavy spotlight vignette and an
+    optional achievement banner (à la the reference edit), flashes on the hit,
+    then fades to black as the song settles. Fed a looped still image, so ``t``
+    runs 0..freeze_dur across the hold.
     """
     parts: list[str] = [
         f"scale={width}:{height}:force_original_aspect_ratio=increase",
@@ -104,11 +127,21 @@ def build_freeze_vf(
     elif grade in GRADES:
         parts.append(GRADES[grade])
     parts.append("eq=contrast=1.08:saturation=1.12")
-    if vignette and grade != "vignette_only":
+    # spotlight: a heavy dark vignette pulls focus to the frozen action — the
+    # reference finisher's signature look; a lighter one otherwise.
+    if spotlight:
+        parts.append("vignette=PI/4,vignette=PI/4")
+    elif vignette and grade != "vignette_only":
         parts.append("vignette=PI/5")
-    # white flash on the freeze hit, then settle into the held frame
+    # achievement banner on top of the graded/vignetted frame (drawn before the
+    # fades so it flashes in and fades out with the picture)
+    badge = _badge_filter(caption, caption_font, height) if caption else None
+    if badge:
+        parts.append(badge)
+    # a brief flash on the freeze hit — black by default (a hard impact, like the
+    # reference's cut to black), or white
     if flash > 0:
-        parts.append(f"fade=t=in:color=white:st=0:d={flash:.3f}")
+        parts.append(f"fade=t=in:color={flash_color}:st=0:d={flash:.3f}")
     if fade_out > 0:
         st = max(0.0, freeze_dur - fade_out)
         parts.append(f"fade=t=out:st={st:.3f}:d={fade_out:.3f}")
