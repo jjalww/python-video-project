@@ -4,15 +4,15 @@ Automatically edits **Valorant highlight montages** by syncing the player's
 kills to the beat of a song.
 
 - **Inputs:** gameplay video, a song, the player's in-game name, and the agent.
-- **Detects:** song beats (librosa) + kill moments (OpenCV template-match of the
-  agent's killfeed icon in the top-right; manual-timestamp fallback).
+- **Detects:** song beats (librosa) + the player's kills (OpenCV — the gold "you"
+  killfeed highlight, or the agent's killfeed icon; manual-timestamp fallback).
 - **Cuts** a montage in one of two modes with eased zooms, crossfades, color
   grading, speed ramps, and a smooth slow-motion ending (FFmpeg + NVENC).
 
 ## Montage modes
 1. **Beat-match** (default): kills cut ~one-per-beat in time with the song.
-2. **Freeze-finisher**: clips play through, then freeze on the key kill at the
-   song's drop with full-screen effects before fading out.
+2. **Freeze-finisher**: the kills play through, the footage keeps rolling past the
+   last kill, then it freezes on the final frame and fades out as the song ends.
 
 ## Requirements
 - **Python 3.12** (the audio/vision stack has no 3.14 wheels yet)
@@ -38,15 +38,20 @@ Prints BPM, beat count, and the first beats; `--out` writes the full result
 
 ## Phase 2 — kill detection
 ```powershell
-# template mode: scan killfeed for the player's agent portrait
-python -m valmontage kills samples\clip.mp4 --template assets\agent_icons\neon.png `
+# default: detect the player's OWN kills from the gold killfeed highlight (no agent needed)
+python -m valmontage kills samples\clip.mp4 --out output\kills.json
+# template mode: match the player's agent portrait instead
+python -m valmontage kills samples\clip.mp4 --method template --template assets\agent_icons\neon.png `
     --player Zayn --agent neon --out output\kills.json --debug output\kills_debug.mp4
 # manual fallback: supply timestamps yourself
 python -m valmontage kills samples\clip.mp4 --manual 9.4,38.3,40.7,42.3 --out output\kills.json
 ```
-Detects kills by matching the agent's (unique) killfeed portrait in the top-right
-ROI; counts rising edges of the portrait count so multikills register; rejects
-deaths (victim-side red nameplate). `--debug` writes an overlay video to verify.
+The default **highlight** method finds the local player's own kills — the gold
+"you" nameplate on the killer (left) side paired with a red enemy victim on the
+right — so teammates' kills/deaths and ability/map colour washes are ignored (it
+needs Valorant's "highlight my own kills" setting on, which is the default). The
+**template** method instead matches the agent's (unique) killfeed portrait. Both
+count rising edges so multikills register; `--debug` (template) writes an overlay.
 
 Calibrate the ROI/template for a new clip with:
 ```powershell

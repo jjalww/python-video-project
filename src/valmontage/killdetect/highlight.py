@@ -1,15 +1,19 @@
-"""Agent-free kill detection from the killfeed *highlight*.
+"""Agent-free kill detection from the killfeed -- tuned to the LOCAL player.
 
-No agent template required. In Valorant a kill row in the top-right killfeed
-is right-anchored and shows the killer's nameplate in the player's team colour
-(green) on the LEFT and the victim's nameplate in red on the RIGHT. A row with
-green-on-the-left and red-on-the-right is a kill by the player's team.
+No agent template required. In Valorant a killfeed row is right-anchored and
+reads left-to-right as [killer] [weapon] [victim]. With "highlight my own kills"
+on (the default), the local player's OWN kills show their name on the killer
+(left) side in a gold/yellow highlight, with the enemy victim plate in red on
+the right.
 
-We count how many such rows are on screen each frame and take the *rising
-edges* of that count as new kills (so multikills are captured too) -- the same
-timeline logic the template detector uses, but driven by colour instead of a
-portrait match. Deaths are naturally ignored: when the player dies their row is
-red-on-the-left, which fails the green-left test.
+We look for exactly that signature -- a gold killer plate on the left paired
+with a red victim plate to its right -- and take the rising edges of how many
+such rows are on screen as the player's kills (so multikills count too).
+
+Deliberately matching the *self* gold (not team green) is what makes this
+robust: teammates' kills and deaths show green/red, not gold, and green/teal
+ability or map washes (e.g. Clove's ult glow, Breeze's water) have no gold
+killer plate paired with a red victim -- so none of those register as kills.
 """
 
 from __future__ import annotations
@@ -41,52 +45,51 @@ def _clean_steps(x: np.ndarray, close_k: int, open_k: int) -> np.ndarray:
     opened = _slide(_slide(closed, open_k, np.min), open_k, np.max)
     return opened.astype(int)
 
-# OpenCV HSV (H is 0-180). Ally/killer nameplate green, enemy/victim red.
-_GREEN_LO, _GREEN_HI = (35, 70, 70), (90, 255, 255)
-_RED1_LO, _RED1_HI = (0, 90, 80), (10, 255, 255)
-_RED2_LO, _RED2_HI = (170, 90, 80), (180, 255, 255)
 
-
+# OpenCV HSV (H is 0-180). The local player's own kills are highlighted in
+# gold/yellow on the killer (left) side; the enemy victim plate (right) is red.
+# Teal/green allies are intentionally NOT matched.
+_SELF_LO, _SELF_HI = (18, 90, 120), (44, 255, 255)
+_RED1_LO, _RED1_HI = (0, 90, 80), (12, 255, 255)
+_RED2_LO, _RED2_HI = (168, 90, 80), (180, 255, 255)
 _WHITE_LO, _WHITE_HI = (0, 0, 170), (180, 70, 255)
 
 
 def _masks(roi_bgr):
     hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
-    green = cv2.inRange(hsv, np.array(_GREEN_LO), np.array(_GREEN_HI))
+    self_ = cv2.inRange(hsv, np.array(_SELF_LO), np.array(_SELF_HI))
     red = cv2.inRange(hsv, np.array(_RED1_LO), np.array(_RED1_HI)) | \
         cv2.inRange(hsv, np.array(_RED2_LO), np.array(_RED2_HI))
     white = cv2.inRange(hsv, np.array(_WHITE_LO), np.array(_WHITE_HI))
-    return green, red, white
+    return self_, red, white
 
 
-def count_killfeed_rows(
+def count_player_kill_rows(
     roi_bgr,
     *,
-    min_w: float = 0.10,     # nameplate blob must be this wide (frac of ROI width)
-    min_h: float = 0.05,     # ... and within this height range (frac of ROI height)
-    max_h: float = 0.45,
-    min_aspect: float = 3.0,  # nameplates are long, thin bars; rejects portraits & netgraph
-    close_w: float = 0.02,   # bridge white-text gaps inside a nameplate
-    row_merge: float = 0.06,  # blob centres closer than this count as one row
-    min_white: float = 0.03,  # nameplate carries white name text; netgraph/scenery don't
+    min_w: float = 0.05,      # gold killer plate width (frac of ROI width)
+    min_h: float = 0.04,      # ... and height range (frac of ROI height)
+    max_h: float = 0.40,
+    min_aspect: float = 1.8,  # nameplates are wider than tall; rejects specks
+    close_w: float = 0.02,    # bridge white-text gaps inside the gold plate
+    row_merge: float = 0.06,  # blob centres closer than this are one row
+    min_white: float = 0.02,  # the killer name carries white text
+    min_red_right: float = 0.04,  # a red victim plate must sit to the right
 ) -> tuple[int, float]:
-    """Count the player's own kill rows visible in the killfeed ROI.
+    """Count the LOCAL player's own kill rows in the killfeed ROI.
 
-    The signal is the killer nameplate in the team colour (green) on the left
-    of a row. We find green blobs, keep the nameplate-shaped ones (wide, not
-    square, plausible height, with white name text inside), and cluster them by
-    vertical position so the killer + a green victim on the same row collapse to
-    a single kill. Deaths show red on the left, so they're excluded; the green
-    netgraph waveform and scenery have no white text, so they're rejected too.
+    Find gold "you" killer plates (left), keep the nameplate-shaped ones with
+    white name text, and require a red enemy victim plate to the right -- then
+    cluster by vertical position so each row counts once.
     """
     h, w = roi_bgr.shape[:2]
     if h < 8 or w < 16:
         return 0, 0.0
-    green, _, white = _masks(roi_bgr)
+    self_, red, white = _masks(roi_bgr)
     k = max(3, int(w * close_w))
-    green = cv2.morphologyEx(green, cv2.MORPH_CLOSE,
+    self_ = cv2.morphologyEx(self_, cv2.MORPH_CLOSE,
                              cv2.getStructuringElement(cv2.MORPH_RECT, (k, 1)))
-    n, _, stats, _ = cv2.connectedComponentsWithStats((green > 0).astype(np.uint8), 8)
+    n, _, stats, _ = cv2.connectedComponentsWithStats((self_ > 0).astype(np.uint8), 8)
 
     centres: list[float] = []
     area = 0
@@ -97,9 +100,14 @@ def count_killfeed_rows(
             continue
         if bw / max(1, bh) < min_aspect:
             continue
-        # a nameplate has white name text on/around the green banner
+        # the killer plate carries white name text on/around the gold banner
         near = white[max(0, y - bh // 2):y + bh + bh // 2, x:x + bw]
         if near.size == 0 or (near > 0).mean() < min_white:
+            continue
+        # a real player kill pairs the gold killer (left) with a RED victim to
+        # its right -- this is what rejects ult/map colour washes and deaths.
+        right = red[max(0, y):y + bh, x + bw:w]
+        if right.size == 0 or (right > 0).mean() < min_red_right:
             continue
         centres.append(y + bh / 2)
         area += int(stats[i, cv2.CC_STAT_AREA])
@@ -142,13 +150,13 @@ def detect_kills_by_highlight(
                 h, w = frame.shape[:2]
                 box = _roi_px(w, h, roi)
             x1, y1, x2, y2 = box
-            count, score = count_killfeed_rows(frame[y1:y2, x1:x2])
+            count, score = count_player_kill_rows(frame[y1:y2, x1:x2])
             times.append(idx / fps)
             counts.append(count)
             scores.append(score)
         idx += 1
     cap.release()
-    if not counts:
+    if len(counts) < 2:  # need >=2 samples to smooth + measure dt below
         return []
 
     # The raw per-frame row count flickers badly (detection drops in/out between
@@ -159,5 +167,8 @@ def detect_kills_by_highlight(
                           close_k=max(3, int(round(0.6 / dt))),
                           open_k=max(3, int(round(0.5 / dt))))
     timeline = list(zip(times, smooth.tolist(), scores))
-    tl_cfg = replace(cfg, min_gap_seconds=max(cfg.min_gap_seconds, 0.7))
+    # Keep the debounce small: the rising edges of a multikill land only a few
+    # tenths of a second apart, so a large floor would merge a double/triple into
+    # one. Flicker is already handled by _clean_steps, not this gap.
+    tl_cfg = replace(cfg, min_gap_seconds=max(cfg.min_gap_seconds, 0.25))
     return _kills_from_timeline(timeline, tl_cfg)
