@@ -46,6 +46,12 @@ ENV/
 /samples/*
 !/samples/.gitkeep
 
+# ---- Third-party assets (downloaded on demand, not committed) ----
+# Riot agent killfeed portraits pulled from valorant-api.com by
+# tests/fetch_agent_icons.py. Footage-extracted templates (e.g. neon.png) are
+# kept; the auto-downloaded reference library is not.
+/assets/agent_icons/reference/
+
 # ---- Audio files ----
 *.mp3
 *.wav
