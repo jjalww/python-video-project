@@ -11,8 +11,9 @@ kills to the beat of a song.
 
 ## Montage modes
 1. **Beat-match** (default): kills cut ~one-per-beat in time with the song.
-2. **Freeze-finisher**: the kills play through, the footage keeps rolling past the
-   last kill, then it freezes on the final frame and fades out as the song ends.
+2. **Freeze-finisher**: plays one **continuous** clutch round straight through
+   (no cuts), then freezes the final frame with a spotlight + optional banner and
+   fades out as the song ends. Feed it roughly one round / one clutch.
 
 ## Requirements
 - **Python 3.12** (the audio/vision stack has no 3.14 wheels yet)
