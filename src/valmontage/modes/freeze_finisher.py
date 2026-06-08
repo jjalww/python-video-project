@@ -36,7 +36,7 @@ def render_freeze_finisher(
     kill_offset: float = -0.30, aftermath_dur: float = 5.0,
     freeze_dur: float = 3.0, freeze_zoom: float = 0.12, flash: float = 0.1,
     freeze_fade: float = 1.2, xfade: float = 0.22,
-    spotlight: bool = True, caption: str = "auto",
+    spotlight: bool = True, caption: str = "",
     work_dir: str | Path = "output/_work",
 ) -> Path:
     video, out_path = Path(video), Path(out_path)
@@ -119,9 +119,9 @@ def render_freeze_finisher(
     # 2) the freeze: grab the final frame of the last shot and hold it (push +
     #    grade + spotlight vignette + an achievement banner), fading to black as
     #    the song settles -- the reference edit's finisher look.
-    if caption == "auto":  # name the moment from how many kills are in the montage
-        caption = {1: "", 2: "DOUBLE KILL", 3: "TRIPLE KILL",
-                   4: "QUAD KILL", 5: "ACE"}.get(len(kills), f"{len(kills)} KILLS")
+    if caption == "auto":  # only badge a genuine multikill/ace -- never "6 KILLS"
+        caption = {2: "DOUBLE KILL", 3: "TRIPLE KILL",
+                   4: "QUAD KILL", 5: "ACE"}.get(len(kills), "")
     frame_png = work / "freeze.png"
     ffmpeg.extract_frame(video, freeze_at, frame_png)
     fz_vf = build_freeze_vf(width, height, fps, freeze_dur, grade=grade, lut=lut,

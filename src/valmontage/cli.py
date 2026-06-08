@@ -198,9 +198,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "kill before freezing")
     r.add_argument("--freeze-dur", dest="freeze_dur", type=float, default=3.0,
                    help="freeze-finisher: how long to hold the frozen final frame")
-    r.add_argument("--caption", default="auto",
-                   help="freeze-finisher: banner over the freeze (e.g. ACE); "
-                        "'auto' names it from the kill count, '' for none")
+    r.add_argument("--caption", default="",
+                   help="freeze-finisher: optional banner over the freeze (e.g. "
+                        "ACE); off by default, or 'auto' for a multikill/ace label")
     r.add_argument("--no-spotlight", dest="spotlight", action="store_false",
                    help="freeze-finisher: disable the heavy spotlight vignette")
     r.set_defaults(func=_cmd_render)

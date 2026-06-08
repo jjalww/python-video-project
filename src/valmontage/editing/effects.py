@@ -13,10 +13,12 @@ import os
 from .plan import Segment
 
 GRADES = {
-    "teal_orange": "eq=contrast=1.06:saturation=1.18:gamma=0.98,"
-                   "colorbalance=rs=-0.06:bs=0.06:rh=0.10:bh=-0.07",
-    "contrast_boost": "eq=contrast=1.15:saturation=1.25:brightness=0.02",
-    "vignette_only": "vignette=PI/5",
+    # Kept deliberately subtle -- a light warm/cool push, not a colour wash. A
+    # heavy grade reads as "over-filtered" and muddies already-saturated maps.
+    "teal_orange": "eq=contrast=1.03:saturation=1.06:gamma=0.99,"
+                   "colorbalance=rs=-0.03:bs=0.03:rh=0.05:bh=-0.03",
+    "contrast_boost": "eq=contrast=1.08:saturation=1.10:brightness=0.01",
+    "vignette_only": "vignette=PI/6",
     "none": "null",
 }
 
@@ -126,13 +128,13 @@ def build_freeze_vf(
         parts.append(f"lut3d=file='{_lut_path(lut)}'")
     elif grade in GRADES:
         parts.append(GRADES[grade])
-    parts.append("eq=contrast=1.08:saturation=1.12")
-    # spotlight: a heavy dark vignette pulls focus to the frozen action — the
-    # reference finisher's signature look; a lighter one otherwise.
+    parts.append("eq=contrast=1.03:saturation=1.05")
+    # spotlight: a single moderate vignette pulls focus to the frozen action
+    # without crushing it to black (stacking two went near-black on dark maps).
     if spotlight:
-        parts.append("vignette=PI/4,vignette=PI/4")
+        parts.append("vignette=PI/4.2")
     elif vignette and grade != "vignette_only":
-        parts.append("vignette=PI/5")
+        parts.append("vignette=PI/6")
     # achievement banner on top of the graded/vignetted frame (drawn before the
     # fades so it flashes in and fades out with the picture)
     badge = _badge_filter(caption, caption_font, height) if caption else None
