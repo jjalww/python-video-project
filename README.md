@@ -53,6 +53,28 @@ Calibrate the ROI/template for a new clip with:
 python tests\inspect_roi.py output\_frames\full_43.png 950 50 120 100 --scale 8
 ```
 
+## Phase 3 — render the montage
+Both modes are driven by the kill timestamps + the song:
+```powershell
+# beat-match (default): kills cut ~one-per-beat, eased zooms, slow-mo finisher
+python -m valmontage render samples\clip.mp4 samples\song.wav `
+    --kills-json output\kills.json --out output\montage.mp4
+
+# freeze-finisher: clips play through, then freeze on the final kill at the drop
+python -m valmontage render samples\clip.mp4 samples\song.wav `
+    --kills-json output\kills.json --mode freeze_finisher --freeze-dur 2.5 `
+    --out output\montage.mp4
+```
+`--kills 9.4,38.3,40.7` accepts inline timestamps instead of `--kills-json`. The
+chorus/drop is auto-detected from the song's energy (override with
+`--music-start`); NVENC is used when available, falling back to libx264.
+
+## Montage Maker (one-click GUI)
+For a no-command-line workflow, double-click **`Montage Maker.bat`** (or run
+`python app.py`): pick a clip and a song, detect or paste the kill timestamps,
+choose **Beat-match** or **Freeze-finisher**, and click **Make Montage**. A
+YouTube/web link can be pasted in place of a local file.
+
 ## Project layout
 ```
 src/valmontage/
@@ -69,4 +91,4 @@ samples/   inputs (gitignored)    output/   renders (gitignored)
 
 > `venv/`, `__pycache__/`, and all video/audio media are git-ignored.
 
-Built in phases (beats → kills → beat-match → freeze-finisher → web UI).
+Built in phases (beats → kills → render [beat-match + freeze-finisher] → GUI).
