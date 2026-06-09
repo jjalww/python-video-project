@@ -107,16 +107,25 @@ def _cmd_render(args: argparse.Namespace) -> int:
     from .modes.beatmatch import render_beatmatch
     from .utils.fetch import fetch_audio, fetch_video
 
+    video = fetch_video(args.video)   # downloads if a URL, else passthrough
+    audio = fetch_audio(args.audio)
+
     if args.kills_json:
         kills = _load_kill_times(args.kills_json)
     elif args.kills:
         kills = [float(t) for t in args.kills.split(",") if t.strip()]
-    else:
-        print("error: provide --kills-json or --kills", file=sys.stderr)
-        return 2
+    else:  # fully automatic: detect the player's kills, then pick the best round
+        from .killdetect.highlight import detect_kills_by_highlight
+        from .editing.plan import pick_highlight
+        print("No kills given -- detecting your kills automatically...")
+        detected = [round(k.time, 3) for k in detect_kills_by_highlight(video)]
+        if not detected:
+            print("error: couldn't auto-detect kills (is 'highlight my own kills' "
+                  "on?); pass --kills or --kills-json", file=sys.stderr)
+            return 2
+        kills = pick_highlight(detected) if args.mode == "freeze_finisher" else detected
+        print(f"Detected {len(detected)} kills; using {len(kills)}.")
     print(f"Rendering {args.mode} montage from {len(kills)} kills...")
-    video = fetch_video(args.video)   # downloads if a URL, else passthrough
-    audio = fetch_audio(args.audio)
 
     if args.mode == "beatmatch":
         out = render_beatmatch(

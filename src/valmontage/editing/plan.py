@@ -29,6 +29,27 @@ from dataclasses import dataclass
 import numpy as np
 
 
+def pick_highlight(kills: list[float], *, gap: float = 15.0) -> list[float]:
+    """From all the kills detected in a raw clip, return just the kills of the
+    single best round/clutch -- the densest cluster (most kills; ties broken
+    toward the latest, since clutches tend to come last). Consecutive kills more
+    than ``gap`` seconds apart are treated as different rounds.
+
+    Lets the app turn a whole-game clip into one tight highlight automatically,
+    so the user never has to trim their footage.
+    """
+    ks = sorted(float(k) for k in kills)
+    if not ks:
+        return []
+    clusters: list[list[float]] = [[ks[0]]]
+    for k in ks[1:]:
+        if k - clusters[-1][-1] <= gap:
+            clusters[-1].append(k)
+        else:
+            clusters.append([k])
+    return max(clusters, key=lambda c: (len(c), c[-1]))
+
+
 def _snap_forward(x: float, grid: np.ndarray, step: float) -> float:
     """Distance from ``x`` forward to the next point on ``grid`` (a sorted
     array of times). If ``x`` is past the grid, extrapolate with ``step``.

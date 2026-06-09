@@ -80,9 +80,14 @@ play-out and hold lengths, and `--no-spotlight` drops the heavy vignette.
 
 ## Montage Maker (one-click GUI)
 For a no-command-line workflow, double-click **`Montage Maker.bat`** (or run
-`python app.py`): pick a clip and a song, detect or paste the kill timestamps,
-choose **Beat-match** or **Freeze-finisher**, and click **Make Montage**. A
-YouTube/web link can be pasted in place of a local file.
+`python app.py`). The fully-automatic path: **pick a clip, pick a song, click
+Make Montage** — it detects your kills, picks the best round, and renders, with
+no trimming or timestamps on your end. You can still detect/type/load kills
+yourself to override, choose **Freeze-finisher** or **Beat-match**, and paste a
+YouTube/web link in place of a local file.
+
+The CLI is automatic too — omit `--kills`/`--kills-json` and it detects + picks
+the best round itself.
 
 ## Project layout
 ```

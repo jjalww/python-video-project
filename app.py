@@ -128,19 +128,19 @@ class MontageApp:
                    style="Soft.TButton").pack(side="left")
         ttk.Button(btns, text="Load kills.json…", command=self._load_kills_json,
                    style="Soft.TButton").pack(side="left", padx=(8, 0))
-        ttk.Label(s2, text="Edit the seconds above, detect them from the clip, or load a file.",
+        ttk.Label(s2, text="Leave blank to auto-detect — just hit Make Montage. Or detect now, type, or load a file.",
                   style="Muted.TLabel").grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
         r += 1
 
         # --- 3 · Style ---------------------------------------------------
         s3 = self._card(main, r, "3 · Style")
         s3.columnconfigure(1, weight=1)
-        self.mode = tk.StringVar(value="beatmatch")
-        ttk.Radiobutton(s3, text="Beat-match  —  cuts land on the beat, slow-motion finisher",
-                        variable=self.mode, value="beatmatch", command=self._sync_mode,
-                        style="TRadiobutton").grid(row=0, column=0, columnspan=3, sticky="w")
-        ttk.Radiobutton(s3, text="Freeze-finisher  —  plays past the last kill, freezes as the song ends",
+        self.mode = tk.StringVar(value="freeze_finisher")
+        ttk.Radiobutton(s3, text="Freeze-finisher  —  plays one clutch straight through, then freezes the finish",
                         variable=self.mode, value="freeze_finisher", command=self._sync_mode,
+                        style="TRadiobutton").grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Radiobutton(s3, text="Beat-match  —  cuts every kill to the beat, slow-motion finisher",
+                        variable=self.mode, value="beatmatch", command=self._sync_mode,
                         style="TRadiobutton").grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 6))
 
         ttk.Label(s3, text="Look").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -371,10 +371,9 @@ class MontageApp:
         except ValueError:
             messagebox.showerror("Bad timestamps", "Kill timestamps must be numbers like: 9.4, 12.0, 15.6")
             return
-        if not kills:
-            messagebox.showwarning("No kills", "Add kill timestamps, load a kills.json, or detect from the clip.")
-            return
-        # The Advanced spinboxes are editable, so a cleared/garbled value makes
+        # kills may be empty -> fully automatic (detect + pick the best round in
+        # the worker). The Advanced spinboxes are editable, so a cleared/garbled
+        # value makes
         # .get() raise. Read them here (before touching anything) and report it
         # instead of letting the click silently do nothing.
         try:
@@ -425,18 +424,38 @@ class MontageApp:
         if is_url(params["audio"]):
             print("Downloading song…")
         audio = str(fetch_audio(params["audio"]))
+
+        kills = params["kills"]
+        if not kills:  # nothing entered -> fully automatic: detect, then pick the round
+            from valmontage.killdetect.highlight import detect_kills_by_highlight
+            print("No kills entered — detecting your kills automatically…")
+            detected = [round(k.time, 3) for k in detect_kills_by_highlight(video)]
+            if not detected:
+                raise RuntimeError(
+                    "Couldn't find your kills automatically. Turn on 'highlight my "
+                    "own kills' in Valorant's settings, or type the kill times in.")
+            if params["mode"] == "freeze_finisher":
+                from valmontage.editing.plan import pick_highlight
+                kills = pick_highlight(detected)
+                print(f"Found {len(detected)} kills — using the best round "
+                      f"({len(kills)}) for the clutch edit.")
+            else:
+                kills = detected
+                print(f"Found {len(detected)} kills.")
+            self.q.put(("setkills", kills))  # show what we picked (no clobber)
+
         common = dict(grade=params["grade"], vignette=params["vignette"],
                       beats_per_clip=params["beats_per_clip"], pre_roll=params["pre_roll"])
         if params["mode"] == "freeze_finisher":
             from valmontage.modes.freeze_finisher import render_freeze_finisher
             return render_freeze_finisher(
-                video, audio, params["kills"], params["out_path"],
+                video, audio, kills, params["out_path"],
                 aftermath_dur=params["aftermath_dur"], freeze_dur=params["freeze_dur"],
                 spotlight=params["spotlight"], caption=params["caption"],
                 **common)
         from valmontage.modes.beatmatch import render_beatmatch
         return render_beatmatch(
-            video, audio, params["kills"], params["out_path"],
+            video, audio, kills, params["out_path"],
             zoom=params["zoom"], intro_dur=params["intro_dur"],
             finisher_factor=params["finisher_factor"], **common)
 
@@ -477,6 +496,8 @@ class MontageApp:
                 kind, payload = self.q.get_nowait()
                 if kind == "log":
                     self._append(payload)
+                elif kind == "setkills":   # show auto-detected kills mid-render
+                    self._set_kills(payload)
                 elif kind == "kills":
                     self._set_kills(payload)
                     self.status.config(text=f"Detected {len(payload)} of your kills.", foreground=OK)
