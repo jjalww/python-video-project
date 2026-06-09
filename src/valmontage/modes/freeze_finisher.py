@@ -31,8 +31,8 @@ def render_freeze_finisher(
     width: int = 1920, height: int = 1080, fps: float = 60.0,
     grade: str = "teal_orange", lut: str | None = None, vignette: bool = False,
     encoder: str = "h264_nvenc", music_start: float | None = None,
-    kill_offset: float = -0.30, lead_in: float = 4.0, aftermath_dur: float = 5.0,
-    freeze_dur: float = 3.0, freeze_zoom: float = 0.12, flash: float = 0.1,
+    kill_offset: float = -0.30, lead_in: float = 4.0, aftermath_dur: float = 1.25,
+    freeze_dur: float = 3.0, freeze_zoom: float = 0.0, flash: float = 0.1,
     freeze_fade: float = 1.2, xfade: float = 0.25,
     spotlight: bool = True, caption: str = "",
     work_dir: str | Path = "output/_work",
@@ -58,7 +58,8 @@ def render_freeze_finisher(
     song_start = music_start if music_start is not None else energy_curve(audio).peak_time
 
     # One continuous window: a run-up before the first kill, through every kill,
-    # a few seconds of flow past the last kill, then the frame we freeze on.
+    # then ~aftermath_dur past the last kill (lands on the knife flex / reaction),
+    # which is the frame we freeze on.
     first, last = kills[0], kills[-1]
     seg_in = max(0.0, first + kill_offset - lead_in)
     freeze_at = min(video_dur - 1.0 / fps, last + kill_offset + aftermath_dur)

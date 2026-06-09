@@ -202,9 +202,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="start each kill clip this many seconds before the kill")
     r.add_argument("--finisher-speed", dest="finisher_speed", type=float, default=0.4,
                    help="finisher slow-mo speed (lower = slower; 0.4 = 2.5x slower)")
-    r.add_argument("--aftermath", type=float, default=5.0,
+    r.add_argument("--aftermath", type=float, default=1.25,
                    help="freeze-finisher: seconds to keep playing past the last "
-                        "kill before freezing")
+                        "kill before freezing (default lands on the knife flex)")
     r.add_argument("--freeze-dur", dest="freeze_dur", type=float, default=3.0,
                    help="freeze-finisher: how long to hold the frozen final frame")
     r.add_argument("--caption", default="",

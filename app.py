@@ -185,7 +185,7 @@ class MontageApp:
         self.adv_ff.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         ttk.Label(self.adv_ff, text="FREEZE-FINISHER", style="Tag.TLabel").grid(
             row=0, column=0, columnspan=4, sticky="w")
-        self.aftermath = self._spin(self.adv_ff, 1, 0, "Play-out after kill (s)", 5.0, 0, 15, 0.5)
+        self.aftermath = self._spin(self.adv_ff, 1, 0, "Freeze delay after kill (s)", 1.25, 0, 8, 0.25)
         self.freeze_dur = self._spin(self.adv_ff, 1, 2, "Freeze hold (s)", 3.0, 1.0, 8.0, 0.5)
         ttk.Label(self.adv_ff, text="Caption").grid(row=2, column=0, sticky="e", padx=6, pady=4)
         self.caption = tk.StringVar(value="")   # blank = no banner (type ACE, or "auto")
