@@ -54,8 +54,8 @@ def render_freeze_finisher(
     if not kills:
         raise ValueError(f"no kills fall within the {video_dur:.1f}s clip")
 
-    # The song plays from its most energetic point and fades on the freeze.
-    song_start = music_start if music_start is not None else energy_curve(audio).peak_time
+    # The song's peak (its drop). We line this up to land ON the freeze.
+    peak = music_start if music_start is not None else energy_curve(audio).peak_time
 
     # One continuous window: a run-up before the first kill, through every kill,
     # then ~aftermath_dur past the last kill (lands on the knife flex / reaction),
@@ -100,16 +100,18 @@ def render_freeze_finisher(
     badge = f', "{caption}" badge' if caption else ""
     print(f"    freeze @ {freeze_at:.2f}s held {freeze_dur:.1f}s{badge}")
 
-    # 3) lay the song under the shot+freeze, fading out as the picture locks
+    # 3) lay the song so its PEAK lands on the freeze: the build-up plays under
+    #    the run-up and the drop slams exactly as the picture locks, then fades.
     out_durs = [play_dur, freeze_dur]
     total = sum(out_durs) - xfade
-    audio_start = max(0.0, min(song_start, max(0.0, song_dur - total)))
+    freeze_pos = play_dur - xfade            # where the freeze lands on the timeline
+    audio_start = max(0.0, min(peak - freeze_pos, max(0.0, song_dur - total)))
     audio_len = min(total, song_dur - audio_start)
     if audio_len < total - 1e-3:
         print(f"  note: song ({song_dur:.1f}s) is shorter than the edit "
               f"({total:.1f}s) -- it ends as the song does")
-    print(f"  timeline ~{total:.2f}s; song "
-          f"{audio_start:.1f}-{audio_start + audio_len:.1f}s, fading out on the freeze")
+    print(f"  timeline ~{total:.2f}s; song {audio_start:.1f}-{audio_start + audio_len:.1f}s; "
+          f"peak lands on the freeze (~{peak - audio_start:.1f}s in)")
 
     return compose([shot, freeze], out_durs, audio, audio_start, audio_len, out_path,
                    xfade=xfade, fps=fps, encoder=encoder, end_fade=freeze_fade)
