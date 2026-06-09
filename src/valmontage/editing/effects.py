@@ -100,52 +100,46 @@ def _badge_filter(text: str, font: str, height: int) -> str | None:
             f"x=(w-text_w)/2:y={int(height * 0.11)}")
 
 
-def build_freeze_vf(
-    width: int, height: int, fps: float, freeze_dur: float,
+def build_slowmo_vf(
+    width: int, height: int, fps: float, ramp_src: float, slowmo_dur: float,
     *, grade: str = "teal_orange", lut: str | None = None,
-    vignette: bool = True, spotlight: bool = True, zoom_amount: float = 0.12,
-    flash: float = 0.10, flash_color: str = "black", fade_out: float = 1.2,
+    vignette: bool = False, spotlight: bool = True, fade_out: float = 1.2,
     caption: str = "", caption_font: str = DEFAULT_BADGE_FONT,
 ) -> str:
-    """Filter chain for the freeze-finisher climax: a single held frame that
-    eases in, takes an intensified grade, gets a heavy spotlight vignette and an
-    optional achievement banner (à la the reference edit), flashes on the hit,
-    then fades to black as the song settles. Fed a looped still image, so ``t``
-    runs 0..freeze_dur across the hold.
+    """Filter chain for the slow-motion finisher: a short source window of
+    ``ramp_src`` seconds eased from 1x (a seamless join with the preceding
+    normal-speed shot) down into super-slow, near-frozen motion over
+    ``slowmo_dur`` on-screen seconds, smoothed with minterpolate. Plus the climax
+    grade, a spotlight vignette, an optional banner, and a fade-out.
+
+    The ramp is a quadratic ``setpts`` so the speed *starts at 1x* (smooth
+    connection) and decelerates; the end speed is ramp_src/(2*slowmo_dur-ramp_src).
     """
+    ramp_src = max(0.05, min(ramp_src, slowmo_dur * 0.4))
+    b = (slowmo_dur - ramp_src) / (ramp_src ** 2)   # stretch coefficient
     parts: list[str] = [
         f"scale={width}:{height}:force_original_aspect_ratio=increase",
         f"crop={width}:{height}",
         "setsar=1",
+        # quadratic ease: output_secs = t + b*t^2 (t = secs into the window), so
+        # the speed eases from 1x down to near-frozen across the window.
+        f"setpts='((PTS-STARTPTS)*TB + {b:.5f}*pow((PTS-STARTPTS)*TB,2))/TB'",
+        f"minterpolate=fps={fps:g}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir",
     ]
-    # eased full-screen push into the kill over the whole hold
-    if zoom_amount > 0:
-        z = f"1+{zoom_amount}*(1-pow(1-min(t/{max(0.1, freeze_dur):.3f},1),3))"
-        parts.append(f"scale='ceil(iw*({z})/2)*2':'ceil(ih*({z})/2)*2':eval=frame,"
-                     f"crop={width}:{height}")
-    # grade, then an extra pop so the climax reads stronger than the body
     if lut:
         parts.append(f"lut3d=file='{_lut_path(lut)}'")
     elif grade in GRADES:
         parts.append(GRADES[grade])
     parts.append("eq=contrast=1.03:saturation=1.05")
-    # spotlight: a single moderate vignette pulls focus to the frozen action
-    # without crushing it to black (stacking two went near-black on dark maps).
-    if spotlight:
+    if spotlight:   # pull focus to the frozen action
         parts.append("vignette=PI/4.2")
     elif vignette and grade != "vignette_only":
         parts.append("vignette=PI/6")
-    # achievement banner on top of the graded/vignetted frame (drawn before the
-    # fades so it flashes in and fades out with the picture)
     badge = _badge_filter(caption, caption_font, height) if caption else None
     if badge:
         parts.append(badge)
-    # a brief flash on the freeze hit — black by default (a hard impact, like the
-    # reference's cut to black), or white
-    if flash > 0:
-        parts.append(f"fade=t=in:color={flash_color}:st=0:d={flash:.3f}")
     if fade_out > 0:
-        st = max(0.0, freeze_dur - fade_out)
-        parts.append(f"fade=t=out:st={st:.3f}:d={fade_out:.3f}")
-    parts.append(f"fps={fps}")
+        parts.append(f"fade=t=out:st={max(0.0, slowmo_dur - fade_out):.3f}:"
+                     f"d={fade_out:.3f}")
+    parts.append(f"fps={fps:g}")
     return ",".join(parts)

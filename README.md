@@ -12,8 +12,9 @@ kills to the beat of a song.
 ## Montage modes
 1. **Beat-match** (default): kills cut ~one-per-beat in time with the song.
 2. **Freeze-finisher**: plays one **continuous** clutch round straight through
-   (no cuts), then freezes the final frame with a spotlight + optional banner and
-   fades out as the song ends. Feed it roughly one round / one clutch.
+   (no cuts), then eases into super slow-motion on the finish with a spotlight +
+   optional banner, the song's drop landing as the slow-mo starts. Feed it
+   roughly one round / one clutch.
 
 ## Requirements
 - **Python 3.12** (the audio/vision stack has no 3.14 wheels yet)
@@ -66,7 +67,7 @@ Both modes are driven by the kill timestamps + the song:
 python -m valmontage render samples\clip.mp4 samples\song.wav `
     --kills-json output\kills.json --out output\montage.mp4
 
-# freeze-finisher: play past the last kill, then freeze with a spotlight + banner
+# freeze-finisher: play the clutch, then ease into super slow-motion on the finish
 python -m valmontage render samples\clip.mp4 samples\song.wav `
     --kills-json output\kills.json --mode freeze_finisher --caption ACE `
     --out output\montage.mp4
@@ -74,9 +75,10 @@ python -m valmontage render samples\clip.mp4 samples\song.wav `
 `--kills 9.4,38.3,40.7` accepts inline timestamps instead of `--kills-json`. The
 chorus/drop is auto-detected from the song's energy (override with
 `--music-start`); NVENC is used when available, falling back to libx264.
-Freeze-finisher extras: `--caption` puts a banner over the freeze (`auto` names
-it from the kill count, `''` for none), `--aftermath`/`--freeze-dur` set the
-play-out and hold lengths, and `--no-spotlight` drops the heavy vignette.
+Freeze-finisher extras: `--caption` puts a banner over the finish (`auto` names
+it from the kill count, `''` for none), `--aftermath` sets where the slow-mo
+settles after the last kill, `--slowmo-dur` how long it lasts, and
+`--no-spotlight` drops the heavy vignette.
 
 ## Montage Maker (one-click GUI)
 For a no-command-line workflow, double-click **`Montage Maker.bat`** (or run

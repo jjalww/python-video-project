@@ -145,7 +145,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             grade=args.grade, lut=args.lut, vignette=args.vignette,
             beats_per_clip=args.beats_per_clip, encoder=args.encoder,
             music_start=args.music_start, pre_roll=args.pre_roll,
-            aftermath_dur=args.aftermath, freeze_dur=args.freeze_dur,
+            aftermath_dur=args.aftermath, slowmo_dur=args.slowmo_dur,
             spotlight=args.spotlight, caption=args.caption,
         )
     print(f"Done -> {out}")
@@ -203,10 +203,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--finisher-speed", dest="finisher_speed", type=float, default=0.4,
                    help="finisher slow-mo speed (lower = slower; 0.4 = 2.5x slower)")
     r.add_argument("--aftermath", type=float, default=1.25,
-                   help="freeze-finisher: seconds to keep playing past the last "
-                        "kill before freezing (default lands on the knife flex)")
-    r.add_argument("--freeze-dur", dest="freeze_dur", type=float, default=3.0,
-                   help="freeze-finisher: how long to hold the frozen final frame")
+                   help="freeze-finisher: seconds past the last kill the slow-mo "
+                        "settles on (default lands on the knife flex)")
+    r.add_argument("--slowmo-dur", dest="slowmo_dur", type=float, default=4.0,
+                   help="freeze-finisher: how long the slow-motion finish lasts on screen")
     r.add_argument("--caption", default="",
                    help="freeze-finisher: optional banner over the freeze (e.g. "
                         "ACE); off by default, or 'auto' for a multikill/ace label")

@@ -136,7 +136,7 @@ class MontageApp:
         s3 = self._card(main, r, "3 · Style")
         s3.columnconfigure(1, weight=1)
         self.mode = tk.StringVar(value="freeze_finisher")
-        ttk.Radiobutton(s3, text="Freeze-finisher  —  plays one clutch straight through, then freezes the finish",
+        ttk.Radiobutton(s3, text="Freeze-finisher  —  plays one clutch through, then eases into super slow-motion",
                         variable=self.mode, value="freeze_finisher", command=self._sync_mode,
                         style="TRadiobutton").grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Radiobutton(s3, text="Beat-match  —  cuts every kill to the beat, slow-motion finisher",
@@ -185,8 +185,8 @@ class MontageApp:
         self.adv_ff.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         ttk.Label(self.adv_ff, text="FREEZE-FINISHER", style="Tag.TLabel").grid(
             row=0, column=0, columnspan=4, sticky="w")
-        self.aftermath = self._spin(self.adv_ff, 1, 0, "Freeze delay after kill (s)", 1.25, 0, 8, 0.25)
-        self.freeze_dur = self._spin(self.adv_ff, 1, 2, "Freeze hold (s)", 3.0, 1.0, 8.0, 0.5)
+        self.aftermath = self._spin(self.adv_ff, 1, 0, "Slow-mo point after kill (s)", 1.25, 0, 8, 0.25)
+        self.slowmo_dur = self._spin(self.adv_ff, 1, 2, "Slow-mo length (s)", 4.0, 2.0, 10.0, 0.5)
         ttk.Label(self.adv_ff, text="Caption").grid(row=2, column=0, sticky="e", padx=6, pady=4)
         self.caption = tk.StringVar(value="")   # blank = no banner (type ACE, or "auto")
         ttk.Entry(self.adv_ff, textvariable=self.caption, width=14).grid(
@@ -384,7 +384,7 @@ class MontageApp:
                 intro_dur=float(self.intro.get()),
                 finisher_factor=float(self.finisher.get()),
                 aftermath_dur=float(self.aftermath.get()),
-                freeze_dur=float(self.freeze_dur.get()),
+                slowmo_dur=float(self.slowmo_dur.get()),
             )
         except (ValueError, tk.TclError):
             messagebox.showerror("Bad number", "Advanced settings must be numbers.")
@@ -450,7 +450,7 @@ class MontageApp:
             from valmontage.modes.freeze_finisher import render_freeze_finisher
             return render_freeze_finisher(
                 video, audio, kills, params["out_path"],
-                aftermath_dur=params["aftermath_dur"], freeze_dur=params["freeze_dur"],
+                aftermath_dur=params["aftermath_dur"], slowmo_dur=params["slowmo_dur"],
                 spotlight=params["spotlight"], caption=params["caption"],
                 **common)
         from valmontage.modes.beatmatch import render_beatmatch
