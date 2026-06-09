@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..audio.energy import energy_curve
+from ..audio.energy import find_drop
 from ..editing.effects import build_segment_vf, build_slowmo_vf
 from ..editing.plan import Segment
 from ..render import ffmpeg
@@ -55,8 +55,9 @@ def render_freeze_finisher(
     if not kills:
         raise ValueError(f"no kills fall within the {video_dur:.1f}s clip")
 
-    # The song's peak (its drop). We line this up to the start of the slow-mo.
-    peak = music_start if music_start is not None else energy_curve(audio).peak_time
+    # The song's drop (where the bass kicks in). We line this up to the start of
+    # the slow-mo so it slams as time begins to slow.
+    drop = music_start if music_start is not None else find_drop(audio)
 
     # Group kill action-moments into scenes: kills within gap_cut play together
     # (one continuous shot); a bigger gap starts a new scene (cut between them).
@@ -120,7 +121,7 @@ def render_freeze_finisher(
     # 3) lay the song so its PEAK lands on the START of the slow-mo, then fades.
     total = sum(out_durs) - xfade * (len(out_durs) - 1)
     slowmo_start = total - slowmo_dur
-    audio_start = max(0.0, min(peak - slowmo_start, max(0.0, song_dur - total)))
+    audio_start = max(0.0, min(drop - slowmo_start, max(0.0, song_dur - total)))
     audio_len = min(total, song_dur - audio_start)
     if audio_len < total - 1e-3:
         print(f"  note: song ({song_dur:.1f}s) is shorter than the edit "
