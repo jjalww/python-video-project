@@ -76,6 +76,18 @@ def unique_path(path: str | Path) -> Path:
     return parent / f"{base} {n}{suffix}"
 
 
+def parse_time(text: str) -> float | None:
+    """Parse a drop time as seconds (``48``, ``48.5``) or mm:ss (``0:48``).
+    Empty -> None (auto-detect)."""
+    text = text.strip()
+    if not text:
+        return None
+    if ":" in text:
+        m, s = text.rsplit(":", 1)
+        return float(m or 0) * 60 + float(s)
+    return float(text)
+
+
 class MontageApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -195,6 +207,10 @@ class MontageApp:
         ttk.Checkbutton(self.adv_ff, text="Spotlight", variable=self.spotlight).grid(
             row=2, column=2, sticky="w", padx=6, pady=4)
         self.gap_cut = self._spin(self.adv_ff, 3, 0, "Cut gaps over (s)", 6.0, 2.0, 20.0, 1.0)
+        ttk.Label(self.adv_ff, text="Drop at (s / m:ss)").grid(row=3, column=2, sticky="e", padx=6, pady=4)
+        self.drop_at = tk.StringVar(value="")
+        ttk.Entry(self.adv_ff, textvariable=self.drop_at, width=10).grid(
+            row=3, column=3, sticky="w", pady=4)
 
         self.adv.grid_remove()  # hidden until ticked
         r += 1
@@ -388,8 +404,10 @@ class MontageApp:
                 slowmo_dur=float(self.slowmo_dur.get()),
                 gap_cut=float(self.gap_cut.get()),
             )
+            music_start = parse_time(self.drop_at.get())   # None = auto-detect
         except (ValueError, tk.TclError):
-            messagebox.showerror("Bad number", "Advanced settings must be numbers.")
+            messagebox.showerror("Bad number", "Advanced settings must be numbers "
+                                 "(drop time can be seconds like 48 or m:ss like 0:48).")
             return
         out = str(unique_path(out))   # never overwrite a previous montage
         self.out.set(out)             # show where it will actually be saved
@@ -399,7 +417,7 @@ class MontageApp:
             grade=self.grade.get(), vignette=bool(self.vignette.get()),
             zoom=bool(self.zoom.get()),
             spotlight=bool(self.spotlight.get()), caption=self.caption.get().strip(),
-            **numbers,
+            music_start=music_start, **numbers,
         )
         self._start(self._work_render, params)
 
@@ -454,7 +472,7 @@ class MontageApp:
                 video, audio, kills, params["out_path"],
                 aftermath_dur=params["aftermath_dur"], slowmo_dur=params["slowmo_dur"],
                 gap_cut=params["gap_cut"], spotlight=params["spotlight"],
-                caption=params["caption"], **common)
+                caption=params["caption"], music_start=params["music_start"], **common)
         from valmontage.modes.beatmatch import render_beatmatch
         return render_beatmatch(
             video, audio, kills, params["out_path"],
