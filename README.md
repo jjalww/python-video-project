@@ -11,10 +11,11 @@ kills to the beat of a song.
 
 ## Montage modes
 1. **Beat-match** (default): kills cut ~one-per-beat in time with the song.
-2. **Freeze-finisher**: plays one **continuous** clutch round straight through
-   (no cuts), then eases into super slow-motion on the finish with a spotlight +
-   optional banner, the song's drop landing as the slow-mo starts. Feed it
-   roughly one round / one clutch.
+2. **Freeze-finisher**: plays kills **continuously** when they're close together
+   and cuts past long dead stretches (walking/rotating), then eases into super
+   slow-motion on the finish with a spotlight + optional banner, the song's drop
+   landing as the slow-mo starts. A tight clutch stays one continuous take; a
+   whole-game clip becomes a few tight scenes (`--gap-cut` sets the threshold).
 
 ## Requirements
 - **Python 3.12** (the audio/vision stack has no 3.14 wheels yet)

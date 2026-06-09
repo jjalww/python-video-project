@@ -194,6 +194,7 @@ class MontageApp:
         self.spotlight = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.adv_ff, text="Spotlight", variable=self.spotlight).grid(
             row=2, column=2, sticky="w", padx=6, pady=4)
+        self.gap_cut = self._spin(self.adv_ff, 3, 0, "Cut gaps over (s)", 6.0, 2.0, 20.0, 1.0)
 
         self.adv.grid_remove()  # hidden until ticked
         r += 1
@@ -385,6 +386,7 @@ class MontageApp:
                 finisher_factor=float(self.finisher.get()),
                 aftermath_dur=float(self.aftermath.get()),
                 slowmo_dur=float(self.slowmo_dur.get()),
+                gap_cut=float(self.gap_cut.get()),
             )
         except (ValueError, tk.TclError):
             messagebox.showerror("Bad number", "Advanced settings must be numbers.")
@@ -451,8 +453,8 @@ class MontageApp:
             return render_freeze_finisher(
                 video, audio, kills, params["out_path"],
                 aftermath_dur=params["aftermath_dur"], slowmo_dur=params["slowmo_dur"],
-                spotlight=params["spotlight"], caption=params["caption"],
-                **common)
+                gap_cut=params["gap_cut"], spotlight=params["spotlight"],
+                caption=params["caption"], **common)
         from valmontage.modes.beatmatch import render_beatmatch
         return render_beatmatch(
             video, audio, kills, params["out_path"],

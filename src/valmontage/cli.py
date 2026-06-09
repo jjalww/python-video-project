@@ -146,7 +146,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             beats_per_clip=args.beats_per_clip, encoder=args.encoder,
             music_start=args.music_start, pre_roll=args.pre_roll,
             aftermath_dur=args.aftermath, slowmo_dur=args.slowmo_dur,
-            spotlight=args.spotlight, caption=args.caption,
+            gap_cut=args.gap_cut, spotlight=args.spotlight, caption=args.caption,
         )
     print(f"Done -> {out}")
     return 0
@@ -207,6 +207,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "settles on (default lands on the knife flex)")
     r.add_argument("--slowmo-dur", dest="slowmo_dur", type=float, default=4.0,
                    help="freeze-finisher: how long the slow-motion finish lasts on screen")
+    r.add_argument("--gap-cut", dest="gap_cut", type=float, default=6.0,
+                   help="freeze-finisher: cut out dead time between kills longer "
+                        "than this (seconds); shorter gaps play continuously")
     r.add_argument("--caption", default="",
                    help="freeze-finisher: optional banner over the freeze (e.g. "
                         "ACE); off by default, or 'auto' for a multikill/ace label")
