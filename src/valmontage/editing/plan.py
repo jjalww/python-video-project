@@ -75,6 +75,7 @@ class Segment:
     is_intro: bool = False
     fade_in: float = 0.0
     fade_out: float = 0.0
+    source: int = 0        # which source clip this segment cuts from
 
 
 @dataclass
@@ -86,10 +87,10 @@ class Plan:
 
 
 def build_beatmatch_plan(
-    kills: list[float],
+    kills: list[float] | list[tuple[int, float]],
     beats: list[float],
     music_start: float,
-    video_dur: float,
+    video_dur: float | list[float],
     *,
     kill_offset: float = -0.30,    # killfeed pops ~0.3s after the kill
     pre_roll: float = 0.25,        # start each kill clip 0.25s before the action
@@ -107,7 +108,21 @@ def build_beatmatch_plan(
     intro_fade: float = 0.6,       # intro fade-in (mirrors the finisher fade-out)
     intro_zoom: float = 0.10,      # intro eased push-zoom amount
     zoom: bool = False,            # zoom punches/pushes (off: they hit on off timings)
+    fps: float = 60.0,             # render frame rate, for frame-grid snapping
 ) -> Plan:
+    """``kills`` is either plain timestamps (single clip) or ``(clip_index,
+    timestamp)`` pairs spanning several clips, with ``video_dur`` a matching
+    per-clip duration list. Clips play in index order; kills only merge into
+    one shot within the same clip, and a shot can never run past its own
+    clip's end."""
+    durs = [float(d) for d in video_dur] if isinstance(video_dur, (list, tuple)) \
+        else [float(video_dur)]
+    pairs = ([(int(s), float(t)) for s, t in kills]
+             if kills and isinstance(kills[0], (tuple, list))
+             else [(0, float(t)) for t in kills])
+
+    if fps:   # an xfade that isn't whole frames can't render at its exact length
+        xfade = round(xfade * fps) / fps
     beats = [b for b in beats if b >= music_start] or beats
     barr = np.asarray(beats)
     beat = float(np.median(np.diff(barr))) if len(barr) > 1 else 0.5
@@ -115,33 +130,50 @@ def build_beatmatch_plan(
     # than clean cuts. za_* are 0 unless zoom is explicitly enabled.
     za_fin, za_ramp, za_norm, za_intro = (0.18, 0.14, 0.12, intro_zoom) if zoom else (0.0, 0.0, 0.0, 0.0)
 
-    # Merge near-simultaneous kills into one shot so a fast multi-kill is one
-    # continuous clip, not overlapping cuts.
-    gap_merge = beat if merge_gap is None else merge_gap
-    clusters: list[list[float]] = []
-    for k in sorted(kills):
-        if clusters and k - clusters[-1][-1] <= gap_merge:
-            clusters[-1].append(k)
+    # Merge near-simultaneous kills (same clip only) into one shot so a fast
+    # multi-kill is one continuous clip, not overlapping cuts. The merge gap
+    # covers everything up to the skip threshold below: a kill too close to
+    # the next one to fill its own beat span must JOIN that shot, not vanish.
+    gap_merge = max(beat, 0.9 * beat + xfade) if merge_gap is None else merge_gap
+    clusters: list[tuple[int, list[float]]] = []
+    for s, k in sorted(pairs):
+        if clusters and clusters[-1][0] == s and k - clusters[-1][1][-1] <= gap_merge:
+            clusters[-1][1].append(k)
         else:
-            clusters.append([k])
+            clusters.append((s, [k]))
 
     m = len(clusters)
     segments: list[Segment] = []
     cursor = 0  # position in the beat grid; advancing it keeps cuts on real beats
-    for ci, cl in enumerate(clusters):
+    for ci, (src, cl) in enumerate(clusters):
         first, last = cl[0], cl[-1]
         src_in = max(0.0, first + kill_offset - pre_roll)
         rank = m - 1 - ci              # 0 = finisher, 1 = clip before it, ...
 
         # Source room before the next shot starts -- the clip may not exceed it,
-        # or it would re-show footage the next clip also shows.
-        if ci + 1 < m:
-            nxt_in = max(0.0, clusters[ci + 1][0] + kill_offset - pre_roll)
+        # or it would re-show footage the next clip also shows. A next shot in a
+        # different clip doesn't constrain us; only this clip's end does.
+        # The cap reserves the xfade tail too: a segment shorter than its beat
+        # span + xfade gets its overlap shaved off, shifting every later cut.
+        if ci + 1 < m and clusters[ci + 1][0] == src:
+            nxt_in = max(0.0, clusters[ci + 1][1][0] + kill_offset - pre_roll)
             avail = max(0.0, nxt_in - src_in)
-            cap = max(1, int(np.floor(avail / beat)))
+            cap = max(1, int(np.floor((avail - xfade) / beat)))
         else:
-            avail = max(0.0, video_dur - src_in)
-            cap = len(barr)
+            avail = max(0.0, durs[src] - src_in)
+            cap = len(barr) if rank == 0 else max(1, int(np.floor((avail - xfade) / beat)))
+
+        # A kill with less than ~a beat (plus the xfade tail) of footage left
+        # can't fill its beat span -- the short cut would knock every later cut
+        # off the grid. With gap_merge covering this band for same-clip
+        # neighbours, this only fires right at a clip's end; skip the kill
+        # there (the finisher instead just runs shorter).
+        if rank != 0 and avail < 0.9 * beat + xfade:
+            where = ("before the next shot" if ci + 1 < m and clusters[ci + 1][0] == src
+                     else "before its clip's end")
+            print(f"    note: skipping a kill {avail:.1f}s {where} "
+                  f"(not enough footage for a beat)")
+            continue
 
         if len(cl) == 1:
             want = beats_per_clip
@@ -152,21 +184,31 @@ def build_beatmatch_plan(
         on = float(barr[cursor + nb] - barr[cursor]) if cursor + nb < len(barr) else nb * beat
         cursor += nb
 
+        # Each crossfade overlaps the next segment by ``xfade``, pulling every
+        # later cut earlier; uncompensated, the cuts drift off the beat grid by
+        # a growing multiple of xfade. So every segment that has a following
+        # join carries one extra xfade of footage: consecutive cuts then stay
+        # exactly a beat span apart, and the NEXT shot starts ON the beat.
         if rank == 0:
             src_dur = min(on + 0.4, avail)
             seg = Segment(src_in, round(src_dur, 3), round(src_dur / finisher_factor, 3),
                           speed=finisher_factor, zoom_amount=za_fin,
-                          is_finisher=True, fade_out=finisher_fade)
+                          is_finisher=True, fade_out=finisher_fade, source=src)
         elif 0 < rank <= ramp_clips:
             # Ease into the finisher: progressively slower, but kept on-beat by
             # playing less source footage over the same on-screen beat span.
             f = ramp_factor + (1.0 - ramp_factor) * (rank - 1) / max(1, ramp_clips)
-            src_dur = min(on * f, avail)
-            seg = Segment(src_in, round(src_dur, 3), round(on, 3),
-                          speed=round(f, 4), zoom_amount=za_ramp)
+            out = on + xfade
+            src_dur = min(out * f, avail)
+            # speed from the actual src/out ratio, so the rendered length always
+            # matches out_dur even when avail capped the source window.
+            seg = Segment(src_in, round(src_dur, 3), round(out, 3),
+                          speed=round(src_dur / max(out, 1e-6), 4),
+                          zoom_amount=za_ramp, source=src)
         else:
-            src_dur = min(on, avail)
-            seg = Segment(src_in, round(src_dur, 3), round(src_dur, 3), zoom_amount=za_norm)
+            src_dur = min(on + xfade, avail)
+            seg = Segment(src_in, round(src_dur, 3), round(src_dur, 3),
+                          zoom_amount=za_norm, source=src)
         segments.append(seg)
 
     # Opening intro: the footage leading up to the first kill, fading in with
@@ -176,15 +218,38 @@ def build_beatmatch_plan(
     audio_start = music_start
     if intro_dur > 0 and segments:
         first_in = segments[0].source_in
-        intro_in = max(0.0, first_in - intro_dur)
+        # +xfade so the intro absorbs its own crossfade overlap and the first
+        # kill cut still lands exactly on the drop.
+        intro_in = max(0.0, first_in - (intro_dur + xfade))
         intro_src = round(first_in - intro_in, 3)
-        if intro_src > 0.1:
+        if intro_src > 0.1 + xfade:
             segments.insert(0, Segment(
-                intro_in, intro_src, intro_src,
-                zoom_amount=za_intro, is_intro=True, fade_in=intro_fade))
+                intro_in, intro_src, intro_src, zoom_amount=za_intro,
+                is_intro=True, fade_in=intro_fade, source=segments[0].source))
             # Start the song early so its build-up plays under the intro and
-            # the drop lands as the first beat-matched cut hits.
-            audio_start = max(0.0, music_start - intro_src)
+            # the drop lands as the first beat-matched cut hits (the cut into
+            # the first kill happens at intro_src - xfade on the timeline).
+            audio_start = max(0.0, music_start - (intro_src - xfade))
+
+    # Snap every cut position to the render's frame grid. Segments render to a
+    # whole number of frames, so an un-snapped length gets truncated by up to a
+    # frame EACH -- rounding that stacks across 30 segments into a very audible
+    # fraction of a second. Snapping the *cumulative* cut positions (not the
+    # individual lengths) keeps every cut within half a frame of its beat, no
+    # matter how long the montage gets.
+    if fps and len(segments) > 1:
+        t = tq = 0.0
+        for s in segments[:-1]:        # the last segment's tail isn't a cut
+            t += s.out_dur - xfade
+            target = round(t * fps) / fps
+            new_out = (target - tq) + xfade
+            if abs(new_out - s.out_dur) > 1e-9:
+                if s.speed != 1.0:     # keep the source window; retune speed
+                    s.speed = round(s.source_dur / new_out, 4)
+                else:
+                    s.source_dur = round(new_out, 6)
+                s.out_dur = round(new_out, 6)
+            tq = target
 
     # Land the ending on a musical boundary so the song fades out on a clean
     # bar line instead of mid-phrase. Stretch the finisher's slow-mo to reach

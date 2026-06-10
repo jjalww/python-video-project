@@ -116,10 +116,11 @@ class MontageApp:
         # --- 1 · Footage -------------------------------------------------
         s1 = self._card(main, r, "1 · Footage")
         s1.columnconfigure(1, weight=1)
-        self.clip = self._file_row(s1, 0, "Gameplay clip", "", VIDEO_TYPES)
+        self.clip = self._file_row(s1, 0, "Gameplay clip(s)", "", VIDEO_TYPES, multi=True)
         song0 = str(DEFAULT_SONG) if DEFAULT_SONG.exists() else ""
         self.song = self._file_row(s1, 1, "Song", song0, AUDIO_TYPES)
-        ttk.Label(s1, text="Tip: paste a YouTube / web link in place of a file.",
+        ttk.Label(s1, text="Tip: Beat-match shines with SEVERAL clips — Ctrl-click them in "
+                           "Browse. A YouTube / web link works in place of a file too.",
                   style="Muted.TLabel").grid(row=2, column=1, columnspan=2, sticky="w", pady=(2, 0))
         r += 1
 
@@ -153,7 +154,7 @@ class MontageApp:
         ttk.Radiobutton(s3, text="Freeze-finisher  —  plays one clutch through, then eases into super slow-motion",
                         variable=self.mode, value="freeze_finisher", command=self._sync_mode,
                         style="TRadiobutton").grid(row=0, column=0, columnspan=3, sticky="w")
-        ttk.Radiobutton(s3, text="Beat-match  —  cuts every kill to the beat, slow-motion finisher",
+        ttk.Radiobutton(s3, text="Beat-match  —  a kill cut on every beat; pick as many clips as you like",
                         variable=self.mode, value="beatmatch", command=self._sync_mode,
                         style="TRadiobutton").grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 6))
 
@@ -310,18 +311,22 @@ class MontageApp:
         f.grid(row=row, column=0, sticky="nsew", pady=6)
         return f
 
-    def _file_row(self, parent, r, label, value, types, save=False):
+    def _file_row(self, parent, r, label, value, types, save=False, multi=False):
         ttk.Label(parent, text=label, width=12, anchor="w").grid(
             row=r, column=0, sticky="w", pady=5)
         var = tk.StringVar(value=value)
         ttk.Entry(parent, textvariable=var).grid(row=r, column=1, sticky="ew", pady=5, padx=(0, 8))
 
         def browse():
-            cur = var.get().strip()
+            # '|' separates multiple picks -- it can't appear in a Windows path,
+            # so splitting on it can never corrupt a real filename
+            cur = var.get().split("|")[0].strip()
             start = str(Path(cur).parent) if cur and Path(cur).parent.exists() else str(PROJECT)
             if save:
                 p = filedialog.asksaveasfilename(defaultextension=".mp4",
                                                  initialdir=start, filetypes=types)
+            elif multi:
+                p = " | ".join(filedialog.askopenfilenames(initialdir=start, filetypes=types))
             else:
                 p = filedialog.askopenfilename(initialdir=start, filetypes=types)
             if p:
@@ -372,17 +377,24 @@ class MontageApp:
         self.kills.insert("1.0", ", ".join(f"{t:g}" for t in times))
 
     def _detect(self):
-        clip = self.clip.get().strip()
-        if not clip:
+        clips = [c.strip() for c in self.clip.get().split("|") if c.strip()]
+        if not clips:
             messagebox.showwarning("Pick a clip", "Choose your gameplay clip first.")
             return
-        self._start(self._work_detect, clip)
+        if len(clips) > 1:
+            messagebox.showinfo(
+                "Several clips picked",
+                "With several clips, kills are detected in each clip "
+                "automatically when you hit Make Montage — nothing to do here.\n\n"
+                "To preview one clip's kills, pick just that clip.")
+            return
+        self._start(self._work_detect, clips[0])
 
     def _render(self):
-        clip = self.clip.get().strip()
+        clips = [c.strip() for c in self.clip.get().split("|") if c.strip()]
         song = self.song.get().strip()
         out = self.out.get().strip()
-        if not clip or not song or not out:
+        if not clips or not song or not out:
             messagebox.showwarning("Missing files", "Pick a clip, a song, and an output path.")
             return
         try:
@@ -390,6 +402,21 @@ class MontageApp:
         except ValueError:
             messagebox.showerror("Bad timestamps", "Kill timestamps must be numbers like: 9.4, 12.0, 15.6")
             return
+        if len(clips) > 1:
+            if self.mode.get() == "freeze_finisher":
+                messagebox.showwarning(
+                    "One clip for Freeze-finisher",
+                    "Freeze-finisher tells the story of ONE clutch, so it uses a "
+                    "single clip.\n\nEither pick just one clip, or switch to "
+                    "Beat-match — that one loves getting lots of clips.")
+                return
+            if kills and not messagebox.askyesno(
+                    "Detect kills automatically?",
+                    "You picked several clips, so the typed kill times can't be "
+                    "matched to one clip.\n\nDetect kills in every clip "
+                    "automatically instead?"):
+                return
+            kills = []
         # kills may be empty -> fully automatic (detect + pick the best round in
         # the worker). The Advanced spinboxes are editable, so a cleared/garbled
         # value makes
@@ -415,7 +442,8 @@ class MontageApp:
         self.out.set(out)             # show where it will actually be saved
         params = dict(
             mode=self.mode.get(),
-            video=clip, audio=song, kills=kills, out_path=out,
+            video=clips[0] if len(clips) == 1 else clips,
+            audio=song, kills=kills, out_path=out,
             grade=self.grade.get(), vignette=bool(self.vignette.get()),
             zoom=bool(self.zoom.get()),
             spotlight=bool(self.spotlight.get()), caption=self.caption.get().strip(),
@@ -449,12 +477,15 @@ class MontageApp:
 
     def _do_render(self, params):
         from valmontage.utils.fetch import fetch_audio, fetch_video, is_url
-        if is_url(params["video"]):
-            print("Downloading gameplay clip…")
-        video = str(fetch_video(params["video"]))
         if is_url(params["audio"]):
             print("Downloading song…")
         audio = str(fetch_audio(params["audio"]))
+
+        if isinstance(params["video"], list):   # beat-match across several clips
+            return self._do_render_multi(params, audio)
+        if is_url(params["video"]):
+            print("Downloading gameplay clip…")
+        video = str(fetch_video(params["video"]))
 
         kills = params["kills"]
         if not kills:  # nothing entered -> fully automatic: detect, then pick the round
@@ -479,14 +510,49 @@ class MontageApp:
                       beats_per_clip=params["beats_per_clip"], pre_roll=params["pre_roll"])
         if params["mode"] == "freeze_finisher":
             from valmontage.modes.freeze_finisher import render_freeze_finisher
+            # changing "Slow-mo point after kill" away from its default is an
+            # explicit manual timing -- banner auto-sync steps aside for it
+            banner_sync = abs(params["aftermath_dur"] - 1.25) < 1e-6
             return render_freeze_finisher(
                 video, audio, kills, params["out_path"],
                 aftermath_dur=params["aftermath_dur"], slowmo_dur=params["slowmo_dur"],
                 gap_cut=params["gap_cut"], spotlight=params["spotlight"],
-                caption=params["caption"], music_start=params["music_start"], **common)
+                caption=params["caption"], music_start=params["music_start"],
+                banner_sync=banner_sync, **common)
         from valmontage.modes.beatmatch import render_beatmatch
         return render_beatmatch(
             video, audio, kills, params["out_path"],
+            zoom=params["zoom"], intro_dur=params["intro_dur"],
+            finisher_factor=params["finisher_factor"], **common)
+
+    def _do_render_multi(self, params, audio):
+        """Beat-match across several clips: detect kills in each, then render."""
+        from valmontage.killdetect.highlight import detect_kills_by_highlight
+        from valmontage.modes.beatmatch import render_beatmatch
+        from valmontage.utils.fetch import fetch_video, is_url
+
+        srcs = params["video"]
+        videos, kills_per = [], []
+        for i, src in enumerate(srcs, 1):
+            if is_url(src):
+                print(f"Downloading clip {i}/{len(srcs)}…")
+            v = str(fetch_video(src))
+            print(f"Scanning clip {i}/{len(srcs)} for your kills — {Path(v).name}…")
+            ks = [round(k.time, 3) for k in detect_kills_by_highlight(v)]
+            print(f"  {len(ks)} kill{'s' if len(ks) != 1 else ''} found")
+            videos.append(v)
+            kills_per.append(ks)
+        total = sum(len(ks) for ks in kills_per)
+        if not total:
+            raise RuntimeError(
+                "Couldn't find kills in any of the clips. Turn on 'highlight my "
+                "own kills' in Valorant's settings, or render clips one at a "
+                "time with typed kill times.")
+        print(f"{total} kills across {len(videos)} clips — building the edit…")
+        common = dict(grade=params["grade"], vignette=params["vignette"],
+                      beats_per_clip=params["beats_per_clip"], pre_roll=params["pre_roll"])
+        return render_beatmatch(
+            videos, audio, kills_per, params["out_path"],
             zoom=params["zoom"], intro_dur=params["intro_dur"],
             finisher_factor=params["finisher_factor"], **common)
 

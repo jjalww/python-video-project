@@ -11,12 +11,20 @@ kills to the beat of a song.
 
 ## Montage modes
 1. **Beat-match** (CLI default): kills cut ~one-per-beat in time with the song.
+   Feed it **several clips** (the GUI's Browse lets you Ctrl-click many; the CLI
+   takes paths separated by `;`) — kills are detected in each clip and pooled so
+   there's enough action for every beat, and the clip with the biggest multikill
+   is saved for the finisher.
 2. **Freeze-finisher** (what the app preselects): plays kills **continuously**
    when they're close together
    and cuts past long dead stretches (walking/rotating), then eases into super
    slow-motion on the finish with a spotlight + optional banner, the song's drop
    landing as the slow-mo starts. A tight clutch stays one continuous take; a
    whole-game clip becomes a few tight scenes (`--gap-cut` sets the threshold).
+   When the round-win banner (FLAWLESS / CLUTCH / ACE) pops after the final
+   kill, the drop is anchored on it — the real on-screen climax, even if the
+   knife never comes out (`--no-banner-sync` disables; "Drop at" still
+   overrides the music side manually).
 
 ## New PC? Start here
 1. **Get the project.** At <https://github.com/jjalww/python-video-project>

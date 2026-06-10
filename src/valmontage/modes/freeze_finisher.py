@@ -36,7 +36,7 @@ def render_freeze_finisher(
     scene_lead: float = 1.2, scene_tail: float = 1.3, aftermath_dur: float = 1.25,
     slowmo_dur: float = 4.0, ramp_src: float = 1.2, freeze_fade: float = 1.2,
     xfade: float = 0.25, spotlight: bool = True, caption: str = "",
-    work_dir: str | Path = "output/_work",
+    banner_sync: bool = True, work_dir: str | Path = "output/_work",
     # accepted for CLI/GUI compatibility; not used by this edit:
     beats_per_clip: int | None = None, pre_roll: float = 0.25,
 ) -> Path:
@@ -69,13 +69,26 @@ def render_freeze_finisher(
         else:
             scenes.append([a])
 
-    # The slow-mo's near-frozen END lands ~aftermath_dur past the last kill; the
-    # window before it (ramp_src of source) is what gets stretched. A roomier
-    # window means most slow-mo frames are real footage rather than
+    # The drop's video anchor, in order of trust: the round banner (FLAWLESS /
+    # CLUTCH / ACE) popping after the final kill is the on-screen climax -- it
+    # marks the moment even when the knife never comes out. Without one
+    # (mid-round highlight, or detection passes), the slow-mo's near-frozen
+    # END lands ~aftermath_dur past the last kill instead. Either way the
+    # window before the anchor (ramp_src of source) is what gets stretched; a
+    # roomier window means most slow-mo frames are real footage rather than
     # interpolator-synthesized, which keeps the slow-mo crisp.
-    slowmo_end = min(video_dur - 1.0 / fps, actions[-1] + aftermath_dur)
     ramp_src = max(0.1, min(ramp_src, slowmo_dur * 0.4))
-    ramp_start = max(0.0, slowmo_end - ramp_src)
+    banner = None
+    if banner_sync:
+        from ..killdetect.banner import find_round_banner
+        banner = find_round_banner(video, kills[-1])
+    if banner is not None:
+        print(f"  round banner pops at {banner:.2f}s -> the drop slams there")
+        ramp_start = max(0.0, min(banner, video_dur - 1.0 / fps - ramp_src))
+        slowmo_end = ramp_start + ramp_src
+    else:
+        slowmo_end = min(video_dur - 1.0 / fps, actions[-1] + aftermath_dur)
+        ramp_start = max(0.0, slowmo_end - ramp_src)
     end_speed = (ramp_src / slowmo_dur) ** 2
 
     if not ffmpeg.has_encoder(encoder):
@@ -91,13 +104,16 @@ def render_freeze_finisher(
     for i, sc in enumerate(scenes):
         s_start = max(0.0, sc[0] - (lead_in if i == 0 else scene_lead))
         s_end = ramp_start if i == len(scenes) - 1 else min(video_dur, sc[-1] + scene_tail)
-        dur = max(0.5, round(s_end - s_start, 3))
+        # whole frames, cut by frame count: time-cut segments run a frame or
+        # two long on Medal clips, which would shift where the drop lands
+        nf = max(int(round(max(0.5, s_end - s_start) * fps)), int(fps / 2))
+        dur = nf / fps
         seg = Segment(round(s_start, 3), dur, dur, zoom_amount=0.0)
         dst = work / f"fz_sc{i:02d}.mp4"
         vf = build_segment_vf(seg, width, height, fps, grade=grade, lut=lut,
                               vignette=vignette)
-        ffmpeg.run(["-ss", f"{s_start:.3f}", "-t", f"{dur:.3f}", "-i", str(video),
-                    "-an", "-vf", vf, "-r", f"{fps:g}",
+        ffmpeg.run(["-ss", f"{s_start:.3f}", "-t", f"{dur + 0.1:.6f}", "-i", str(video),
+                    "-an", "-vf", vf, "-r", f"{fps:g}", "-frames:v", str(nf),
                     *ffmpeg.video_encoder_args(encoder), str(dst)])
         seg_files.append(dst)
         out_durs.append(dur)
@@ -112,9 +128,10 @@ def render_freeze_finisher(
     sm_vf = build_slowmo_vf(width, height, fps, ramp_src, slowmo_dur, grade=grade,
                             lut=lut, vignette=vignette, spotlight=spotlight,
                             fade_out=freeze_fade, caption=caption)
-    # second -t is output-side: trims the clone-padded tail to exactly slowmo_dur
+    # -frames:v trims the clone-padded tail to exactly slowmo_dur of frames
     ffmpeg.run(["-ss", f"{ramp_start:.3f}", "-t", f"{ramp_src:.3f}", "-i", str(video),
-                "-an", "-vf", sm_vf, "-r", f"{fps:g}", "-t", f"{slowmo_dur:.3f}",
+                "-an", "-vf", sm_vf, "-r", f"{fps:g}",
+                "-frames:v", str(int(round(slowmo_dur * fps))),
                 *ffmpeg.video_encoder_args(encoder), str(slow)])
     seg_files.append(slow)
     out_durs.append(slowmo_dur)

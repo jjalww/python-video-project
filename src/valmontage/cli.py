@@ -107,8 +107,43 @@ def _cmd_render(args: argparse.Namespace) -> int:
     from .modes.beatmatch import render_beatmatch
     from .utils.fetch import fetch_audio, fetch_video
 
-    video = fetch_video(args.video)   # downloads if a URL, else passthrough
+    sources = [v.strip() for v in args.video.split(";") if v.strip()]
     audio = fetch_audio(args.audio)
+
+    if len(sources) > 1:   # several clips: beat-match only, kills auto-detected
+        if args.mode != "beatmatch":
+            print("error: several clips only work with --mode beatmatch",
+                  file=sys.stderr)
+            return 2
+        if args.kills or args.kills_json:
+            print("note: --kills/--kills-json apply to a single clip; with "
+                  "several clips, kills are auto-detected per clip")
+        from .killdetect.highlight import detect_kills_by_highlight
+        videos, kills_per = [], []
+        for i, src in enumerate(sources, 1):
+            v = fetch_video(src)
+            print(f"Scanning clip {i}/{len(sources)} for kills -- {Path(v).name}...")
+            ks = [round(k.time, 3) for k in detect_kills_by_highlight(v)]
+            print(f"  {len(ks)} kill(s) found")
+            videos.append(v)
+            kills_per.append(ks)
+        if not any(kills_per):
+            print("error: couldn't auto-detect kills in any clip (is 'highlight "
+                  "my own kills' on?)", file=sys.stderr)
+            return 2
+        out = render_beatmatch(
+            videos, audio, kills_per, args.out,
+            width=args.width, height=args.height, fps=args.fps,
+            grade=args.grade, lut=args.lut, vignette=args.vignette,
+            beats_per_clip=args.beats_per_clip, encoder=args.encoder,
+            music_start=args.music_start, intro_dur=args.intro,
+            pre_roll=args.pre_roll, finisher_factor=args.finisher_speed,
+            zoom=args.zoom,
+        )
+        print(f"Done -> {out}")
+        return 0
+
+    video = fetch_video(sources[0])   # downloads if a URL, else passthrough
 
     if args.kills_json:
         kills = _load_kill_times(args.kills_json)
@@ -147,6 +182,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             music_start=args.music_start, pre_roll=args.pre_roll,
             aftermath_dur=args.aftermath, slowmo_dur=args.slowmo_dur,
             gap_cut=args.gap_cut, spotlight=args.spotlight, caption=args.caption,
+            banner_sync=args.banner_sync,
         )
     print(f"Done -> {out}")
     return 0
@@ -178,7 +214,8 @@ def build_parser() -> argparse.ArgumentParser:
     k.set_defaults(func=_cmd_kills)
 
     r = sub.add_parser("render", help="render a montage from kills + song")
-    r.add_argument("video", help="gameplay clip")
+    r.add_argument("video", help="gameplay clip; beatmatch takes several "
+                                 "separated by ';' (kills auto-detected per clip)")
     r.add_argument("audio", help="song (local file)")
     r.add_argument("--mode", default="beatmatch", choices=["beatmatch", "freeze_finisher"])
     r.add_argument("--kills-json", dest="kills_json", help="kills JSON from the 'kills' command")
@@ -215,6 +252,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "ACE); off by default, or 'auto' for a multikill/ace label")
     r.add_argument("--no-spotlight", dest="spotlight", action="store_false",
                    help="freeze-finisher: disable the heavy spotlight vignette")
+    r.add_argument("--no-banner-sync", dest="banner_sync", action="store_false",
+                   help="freeze-finisher: don't anchor the drop on the round "
+                        "banner (FLAWLESS/ACE); use last kill + aftermath only")
     r.set_defaults(func=_cmd_render)
 
     return parser
