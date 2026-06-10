@@ -106,33 +106,38 @@ def build_slowmo_vf(
     vignette: bool = False, spotlight: bool = True, fade_out: float = 1.2,
     caption: str = "", caption_font: str = DEFAULT_BADGE_FONT,
 ) -> str:
-    """Filter chain for the slow-motion finisher: a short source window of
-    ``ramp_src`` seconds eased from 1x (a seamless join with the preceding
+    """Filter chain for the slow-motion finisher: a source window of
+    ``ramp_src`` seconds eased from 1x (a seamless hard cut from the preceding
     normal-speed shot) down into super-slow, near-frozen motion over
-    ``slowmo_dur`` on-screen seconds, smoothed with minterpolate. Plus the climax
-    grade, a spotlight vignette, an optional banner, and a fade-out.
+    ``slowmo_dur`` on-screen seconds, smoothed with minterpolate. Plus the
+    spotlight vignette (eased in, so nothing pops at the cut), an optional
+    banner, and a fade-out.
 
-    The ramp is a quadratic ``setpts`` so the speed *starts at 1x* (smooth
-    connection) and decelerates; the end speed is ramp_src/(2*slowmo_dur-ramp_src).
+    The ramp is a hyperbolic ``setpts`` -- on-screen speed is 1/(1+a*T)^2 at T
+    seconds into the slow-mo -- so it *starts at 1x* (invisible join) and
+    decelerates smoothly the whole way down to (ramp_src/slowmo_dur)^2 by the
+    end, with no sudden knee. The map only reaches ``slowmo_dur`` in the limit,
+    so the last (near-frozen) frame is clone-padded; render with an output-side
+    ``-t slowmo_dur`` to trim exactly.
     """
     ramp_src = max(0.05, min(ramp_src, slowmo_dur * 0.4))
-    b = (slowmo_dur - ramp_src) / (ramp_src ** 2)   # stretch coefficient
+    a = (slowmo_dur - ramp_src) / (slowmo_dur * ramp_src)   # deceleration coeff
     parts: list[str] = [
         f"scale={width}:{height}:force_original_aspect_ratio=increase",
         f"crop={width}:{height}",
         "setsar=1",
-        # quadratic ease: output_secs = t + b*t^2 (t = secs into the window), so
-        # the speed eases from 1x down to near-frozen across the window.
-        f"setpts='((PTS-STARTPTS)*TB + {b:.5f}*pow((PTS-STARTPTS)*TB,2))/TB'",
+        # hyperbolic ease: output_secs = t/(1 - a*t) (t = secs into the window)
+        f"setpts='((PTS-STARTPTS)*TB)/(1-{a:.6f}*(PTS-STARTPTS)*TB)/TB'",
         f"minterpolate=fps={fps:g}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir",
+        "tpad=stop_mode=clone:stop_duration=4",
     ]
     if lut:
         parts.append(f"lut3d=file='{_lut_path(lut)}'")
     elif grade in GRADES:
         parts.append(GRADES[grade])
-    parts.append("eq=contrast=1.03:saturation=1.05")
-    if spotlight:   # pull focus to the frozen action
-        parts.append("vignette=PI/4.2")
+    if spotlight:   # ease the spotlight in over the first second of slow-mo
+        base = "PI/6" if vignette else "0"
+        parts.append(f"vignette=angle='{base}+(PI/4.2-{base})*min(t,1)':eval=frame")
     elif vignette and grade != "vignette_only":
         parts.append("vignette=PI/6")
     badge = _badge_filter(caption, caption_font, height) if caption else None

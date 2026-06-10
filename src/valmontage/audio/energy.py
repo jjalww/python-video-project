@@ -47,7 +47,11 @@ def find_drop(audio_path, *, sr: int = 22050, hop_length: int = 512,
     *loud* frames (>= ``hi`` x the track's peak energy, blending RMS with
     low-frequency bass); the deepest energy valley between the first and last loud
     moment is the main breakdown; the drop is the first loud frame after it.
-    Validated to within ~1s against real tracks' actual drops.
+
+    That crossing happens during the buildup's rising crescendo, a beat or two
+    BEFORE the bass actually slams in (the smoothed curve climbs over the
+    threshold early), so the result is then snapped to the steepest bass jump
+    nearby -- the slam itself.
     """
     y, sr = librosa.load(str(audio_path), sr=sr, mono=True)
     rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
@@ -73,6 +77,20 @@ def find_drop(audio_path, *, sr: int = 22050, hop_length: int = 512,
         return round(float(times[first]), 3)
     breakdown = first + int(np.argmin(energy[first:last + 1]))  # deepest valley between
     drop = breakdown + int(np.argmax(loud[breakdown:]))         # first slam after it
+
+    # Snap to the slam: the first near-max bass jump within a couple of seconds
+    # of the threshold crossing (which lands in the buildup, not the kick-in).
+    # "First >= 80% of the biggest" rather than the argmax, because every kick
+    # after the drop is a near-identical jump -- the max alone may pick beat 2.
+    j = max(1, int(round(0.15 * sr / hop_length)))   # bass-rise window ~0.15s
+    w = int(round(2.0 * sr / hop_length))            # search +/-2s around the crossing
+    lo, hi_i = max(0, drop - w), min(len(energy) - j, drop + w)
+    if hi_i > lo:
+        bsm = np.convolve(_norm(bass), np.ones(j) / j, mode="same")
+        rise = bsm[lo + j:hi_i + j] - bsm[lo:hi_i]
+        if rise.max() > 0:
+            first_big = int(np.flatnonzero(rise >= 0.8 * rise.max())[0])
+            drop = lo + first_big + j // 2
     return round(float(times[drop]), 3)
 
 

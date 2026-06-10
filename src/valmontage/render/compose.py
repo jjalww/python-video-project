@@ -14,8 +14,14 @@ from pathlib import Path
 from . import ffmpeg
 
 
-def build_xfade_chain(n: int, out_durs: list[float], xfade: float) -> tuple[list[str], str]:
+def build_xfade_chain(n: int, out_durs: list[float], xfade: float,
+                      last_xfade: float | None = None) -> tuple[list[str], str]:
     """Chain ``n`` segment video streams ([0:v]..[n-1:v]) with eased crossfades.
+
+    ``last_xfade`` overrides the duration of the final join; 0 makes it a hard
+    cut (concat). The freeze-finisher uses that: its slow-mo continues the last
+    shot's footage at 1x, so a dissolve there only ghosts two near-identical
+    frames over each other -- a clean cut is the invisible join.
 
     Returns the filter_complex parts and the label of the final video stream.
     With a single segment there is nothing to fade, so ``0:v`` is returned.
@@ -26,11 +32,15 @@ def build_xfade_chain(n: int, out_durs: list[float], xfade: float) -> tuple[list
     cur = out_durs[0]
     prev = "0:v"
     for k in range(1, n):
-        off = cur - xfade
+        d = last_xfade if (last_xfade is not None and k == n - 1) else xfade
         out = f"v{k}"
-        fc.append(f"[{prev}][{k}:v]xfade=transition=fade:"
-                  f"duration={xfade:.3f}:offset={off:.3f}[{out}]")
-        cur = cur + out_durs[k] - xfade
+        if d > 1e-6:
+            fc.append(f"[{prev}][{k}:v]xfade=transition=fade:"
+                      f"duration={d:.3f}:offset={cur - d:.3f}[{out}]")
+            cur = cur + out_durs[k] - d
+        else:
+            fc.append(f"[{prev}][{k}:v]concat=n=2:v=1:a=0[{out}]")
+            cur = cur + out_durs[k]
         prev = out
     return fc, prev
 
@@ -44,6 +54,7 @@ def compose(
     out_path: str | Path,
     *,
     xfade: float = 0.22,
+    last_xfade: float | None = None,
     fps: float = 60.0,
     encoder: str = "libx264",
     end_fade: float = 0.8,
@@ -61,7 +72,7 @@ def compose(
     # plays under the opening and the drop lands where the mode wants it.
     inputs += ["-ss", f"{audio_start:.3f}", "-i", str(audio)]
 
-    fc, vlabel = build_xfade_chain(len(seg_files), out_durs, xfade)
+    fc, vlabel = build_xfade_chain(len(seg_files), out_durs, xfade, last_xfade)
     fc.append(
         f"[{audio_idx}:a]atrim=0:{total_dur:.3f},"
         f"afade=t=in:st=0:d={audio_fade_in:.3f},"

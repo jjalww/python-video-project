@@ -34,7 +34,7 @@ def render_freeze_finisher(
     encoder: str = "h264_nvenc", music_start: float | None = None,
     kill_offset: float = -0.30, lead_in: float = 3.0, gap_cut: float = 6.0,
     scene_lead: float = 1.2, scene_tail: float = 1.3, aftermath_dur: float = 1.25,
-    slowmo_dur: float = 4.0, ramp_src: float = 0.6, freeze_fade: float = 1.2,
+    slowmo_dur: float = 4.0, ramp_src: float = 1.2, freeze_fade: float = 1.2,
     xfade: float = 0.25, spotlight: bool = True, caption: str = "",
     work_dir: str | Path = "output/_work",
     # accepted for CLI/GUI compatibility; not used by this edit:
@@ -70,11 +70,13 @@ def render_freeze_finisher(
             scenes.append([a])
 
     # The slow-mo's near-frozen END lands ~aftermath_dur past the last kill; the
-    # short window before it (ramp_src of source) is what gets stretched.
+    # window before it (ramp_src of source) is what gets stretched. A roomier
+    # window means most slow-mo frames are real footage rather than
+    # interpolator-synthesized, which keeps the slow-mo crisp.
     slowmo_end = min(video_dur - 1.0 / fps, actions[-1] + aftermath_dur)
     ramp_src = max(0.1, min(ramp_src, slowmo_dur * 0.4))
-    ramp_start = slowmo_end - ramp_src
-    end_speed = ramp_src / (2 * slowmo_dur - ramp_src)
+    ramp_start = max(0.0, slowmo_end - ramp_src)
+    end_speed = (ramp_src / slowmo_dur) ** 2
 
     if not ffmpeg.has_encoder(encoder):
         print(f"  {encoder} unavailable -> libx264")
@@ -110,24 +112,38 @@ def render_freeze_finisher(
     sm_vf = build_slowmo_vf(width, height, fps, ramp_src, slowmo_dur, grade=grade,
                             lut=lut, vignette=vignette, spotlight=spotlight,
                             fade_out=freeze_fade, caption=caption)
+    # second -t is output-side: trims the clone-padded tail to exactly slowmo_dur
     ffmpeg.run(["-ss", f"{ramp_start:.3f}", "-t", f"{ramp_src:.3f}", "-i", str(video),
-                "-an", "-vf", sm_vf, "-r", f"{fps:g}",
+                "-an", "-vf", sm_vf, "-r", f"{fps:g}", "-t", f"{slowmo_dur:.3f}",
                 *ffmpeg.video_encoder_args(encoder), str(slow)])
     seg_files.append(slow)
     out_durs.append(slowmo_dur)
     badge = f', "{caption}" banner' if caption else ""
     print(f"    slow-mo ends @ {slowmo_end:.2f}s{badge}")
 
-    # 3) lay the song so its PEAK lands on the START of the slow-mo, then fades.
-    total = sum(out_durs) - xfade * (len(out_durs) - 1)
+    # 3) lay the song so its DROP lands on the cut into the slow-mo, then fades.
+    # The final join is a hard cut (the slow-mo continues the same footage at
+    # 1x), so the slow-mo starts exactly at total - slowmo_dur.
+    total = sum(out_durs) - xfade * max(0, len(out_durs) - 2)
     slowmo_start = total - slowmo_dur
     audio_start = max(0.0, min(drop - slowmo_start, max(0.0, song_dur - total)))
     audio_len = min(total, song_dur - audio_start)
     if audio_len < total - 1e-3:
         print(f"  note: song ({song_dur:.1f}s) is shorter than the edit "
               f"({total:.1f}s) -- it ends as the song does")
-    print(f"  timeline ~{total:.2f}s; song {audio_start:.1f}-{audio_start + audio_len:.1f}s; "
-          f"drop lands as the slow-mo starts (~{slowmo_start:.1f}s)")
+    landing = drop - audio_start
+    print(f"  timeline ~{total:.2f}s; song {audio_start:.1f}-{audio_start + audio_len:.1f}s")
+    if landing < slowmo_start - 0.05:
+        print(f"  note: only {drop:.1f}s of song comes before its drop, but the edit "
+              f"runs {slowmo_start:.1f}s before the slow-mo -- the drop will hit "
+              f"{slowmo_start - landing:.1f}s EARLY (raise 'Cut gaps over' less, "
+              f"trim the clip, or pick a song with a longer intro)")
+    elif landing > slowmo_start + 0.05:
+        print(f"  note: the song ends too soon to push its drop onto the slow-mo "
+              f"-- it hits {landing - slowmo_start:.1f}s late")
+    else:
+        print(f"  drop lands on the cut into slow-mo (~{slowmo_start:.1f}s)")
 
     return compose(seg_files, out_durs, audio, audio_start, audio_len, out_path,
-                   xfade=xfade, fps=fps, encoder=encoder, end_fade=freeze_fade)
+                   xfade=xfade, last_xfade=0.0, fps=fps, encoder=encoder,
+                   end_fade=freeze_fade)
