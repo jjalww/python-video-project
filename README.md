@@ -10,24 +10,50 @@ kills to the beat of a song.
   grading, speed ramps, and a smooth slow-motion ending (FFmpeg + NVENC).
 
 ## Montage modes
-1. **Beat-match** (default): kills cut ~one-per-beat in time with the song.
-2. **Freeze-finisher**: plays kills **continuously** when they're close together
+1. **Beat-match** (CLI default): kills cut ~one-per-beat in time with the song.
+2. **Freeze-finisher** (what the app preselects): plays kills **continuously**
+   when they're close together
    and cuts past long dead stretches (walking/rotating), then eases into super
    slow-motion on the finish with a spotlight + optional banner, the song's drop
    landing as the slow-mo starts. A tight clutch stays one continuous take; a
    whole-game clip becomes a few tight scenes (`--gap-cut` sets the threshold).
+
+## New PC? Start here
+1. **Get the project.** At <https://github.com/jjalww/python-video-project>
+   click the green **Code** button → **Download ZIP**, then right-click the ZIP
+   → **Extract All** (or `git clone https://github.com/jjalww/python-video-project.git`).
+2. **Double-click `Setup (run once).bat`** in the project folder. It installs
+   Python 3.12, FFmpeg, and the app's packages (needs internet, takes a few
+   minutes). If it installs Python, it will ask you to run it a second time —
+   do that.
+3. **Double-click `Montage Maker.bat`.** That's all you ever do from then on.
+
+**What does NOT come from GitHub:** your clips, songs, and finished montages
+are media files and are deliberately not uploaded. Copy them to the new PC
+yourself (USB/cloud) into `samples\`, or just paste a Medal.tv / YouTube link
+straight into the Clip and Song boxes — the app downloads them. Douyin/TikTok
+links usually won't work (they need a logged-in browser).
+
+**Troubleshooting**
+- "FFmpeg is not installed" → run `Setup (run once).bat` again; if it
+  persists, restart the PC once.
+- "No module named 'valmontage'" → run `Setup (run once).bat` again.
+- "No kills found" → turn on "highlight my own kills" in Valorant's settings
+  (it's the game default), or type the times in.
 
 ## Requirements
 - **Python 3.12** (the audio/vision stack has no 3.14 wheels yet)
 - **FFmpeg + ffprobe** on PATH
 - NVIDIA GPU optional (uses `h264_nvenc` when available)
 
-## Setup (Windows / PowerShell)
+## Manual setup (advanced)
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+.\.venv\Scripts\python -m pip install -r requirements.txt
 ```
+`requirements.txt` includes `-e .`, which installs this project into the venv
+so the app can find its own code — don't skip it.
 
 ## Phase 1 — beat detection
 ```powershell
@@ -101,7 +127,8 @@ src/valmontage/
   modes/        beatmatch, freeze_finisher
   render/       FFmpeg filtergraph build + NVENC encode
   utils/
-config/example.yaml   per-render config (player, agent, mode, style)
+config/example.yaml   reference of the tunable settings (not loaded by the
+                      app — use the GUI's Advanced settings or CLI flags)
 assets/agent_icons/   killfeed icon templates    assets/luts/   .cube LUTs
 samples/   inputs (gitignored)    output/   renders (gitignored)
 ```

@@ -15,6 +15,7 @@ import ctypes
 import json
 import os
 import queue
+import shutil
 import sys
 import threading
 import traceback
@@ -24,6 +25,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 PROJECT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROJECT / "src"))  # belt-and-braces: GUI works even without 'pip install -e .'
 DEFAULT_SONG = PROJECT / "samples" / "song.wav"
 DEFAULT_KILLS = PROJECT / "output" / "kills.json"
 DEFAULT_OUT = PROJECT / "output" / "montage.mp4"
@@ -94,7 +96,7 @@ class MontageApp:
         self.q: queue.Queue = queue.Queue()
         self.busy = False
         root.title("valmontage — Montage Maker")
-        root.minsize(720, 780)
+        root.minsize(720, 640)   # fits a 1366x768 laptop screen
         root.configure(bg=BG)
         self._setup_theme()
 
@@ -425,6 +427,15 @@ class MontageApp:
     def _start(self, fn, *args):
         if self.busy:
             return
+        missing = [t for t in ("ffmpeg", "ffprobe") if not shutil.which(t)]
+        if missing:
+            messagebox.showerror(
+                "FFmpeg is not installed",
+                "This app needs the free FFmpeg tool to cut video, and "
+                f"{' and '.join(missing)} wasn't found on this PC.\n\n"
+                "Fix: double-click 'Setup (run once).bat' in the app's folder.\n"
+                "If you already ran it, restart your PC once and try again.")
+            return
         self.busy = True
         self.go.config(state="disabled")
         self.status.config(text="Working…", foreground=TEAL)
@@ -519,16 +530,26 @@ class MontageApp:
                 elif kind == "setkills":   # show auto-detected kills mid-render
                     self._set_kills(payload)
                 elif kind == "kills":
-                    self._set_kills(payload)
-                    self.status.config(text=f"Detected {len(payload)} of your kills.", foreground=OK)
+                    if payload:
+                        self._set_kills(payload)
+                        self.status.config(text=f"Detected {len(payload)} of your kills.",
+                                           foreground=OK)
+                    else:   # don't clobber typed kills with an empty result
+                        self.status.config(
+                            text="No kills found — turn on 'highlight my own kills' in "
+                                 "Valorant's settings, or type the kill times in yourself.",
+                            foreground=ERR)
                     self._finish()
                 elif kind == "done":
                     self.status.config(text=f"Done → {payload}", foreground=OK)
                     self._finish()
                     self._open_result(payload)
                 elif kind == "error":
-                    self.status.config(text=f"Error: {payload}", foreground=ERR)
+                    first = (payload.splitlines() or [""])[0]
+                    self.status.config(text=f"Error: {first[:120]}", foreground=ERR)
                     self._finish()
+                    if len(payload) > 600:
+                        payload = payload[:600] + "\n…(full details are in the log)"
                     messagebox.showerror("Something went wrong", payload)
         except queue.Empty:
             pass
@@ -575,6 +596,7 @@ class _QueueWriter:
 
 
 def main() -> None:
+    os.chdir(PROJECT)   # anchor relative paths (download cache, work dir) however the app is launched
     root = tk.Tk()
     MontageApp(root)
     root.mainloop()

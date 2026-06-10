@@ -5,12 +5,16 @@ soundfile          # librosa I/O backend
 
 # --- Phase 2: kill detection ---
 opencv-python
+requests           # tests/fetch_agent_icons.py only — refresh agent killfeed icons
 
 # --- Config / CLI ---
 pyyaml
 
 # --- Optional: pull audio from a link for testing ---
 yt-dlp
+
+# --- This project itself (makes 'from valmontage...' imports work) ---
+-e .
 
 # NOTE: FFmpeg/ffprobe are external binaries (installed via winget), not pip packages.
 # Target interpreter: Python 3.12 (numba/librosa/opencv lack 3.14 wheels).
