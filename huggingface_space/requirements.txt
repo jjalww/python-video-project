@@ -1,0 +1,7 @@
+# The montage engine, pulled straight from the GitHub repo. This brings numpy,
+# librosa, soundfile, opencv-python, pyyaml and yt-dlp with it (see the repo's
+# pyproject.toml). When you push engine changes to GitHub and rebuild the
+# Space, it picks them up.
+valmontage @ git+https://github.com/jjalww/python-video-project.git
+
+# (Gradio itself is provided by the Space's SDK -- no need to list it here.)

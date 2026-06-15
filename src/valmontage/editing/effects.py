@@ -81,7 +81,20 @@ def build_segment_vf(
     return ",".join(parts)
 
 
-DEFAULT_BADGE_FONT = r"C:\Windows\Fonts\ariblk.ttf"  # Arial Black — bold banner
+def _default_badge_font() -> str:
+    """First bold font that exists, so the banner works on Windows AND on a
+    Linux server (the web app). Falls back to the Windows path; if nothing is
+    found, _badge_filter just skips the banner rather than failing."""
+    for c in (r"C:\Windows\Fonts\ariblk.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+              "/System/Library/Fonts/Supplemental/Arial Bold.ttf"):
+        if os.path.isfile(c):
+            return c
+    return r"C:\Windows\Fonts\ariblk.ttf"
+
+
+DEFAULT_BADGE_FONT = _default_badge_font()  # bold banner font, cross-platform
 
 
 def _badge_filter(text: str, font: str, height: int) -> str | None:
