@@ -36,14 +36,23 @@ FREEZE = "Freeze-finisher — one clutch into super slow-motion"
 
 
 def _resolve_song(song_file: str | None, song_link: str | None) -> str:
+    # Prefer the uploaded file -- it always works. A pasted link is best-effort:
+    # YouTube blocks downloads from cloud servers like this one, so it often
+    # fails here even though it works on the desktop app at home.
+    if song_file:
+        return song_file
     if song_link and song_link.strip():
         link = song_link.strip()
         if not is_url(link):
             raise gr.Error("The song link must start with http:// or https://")
-        return str(fetch_audio(link))
-    if song_file:
-        return song_file
-    raise gr.Error("Add a song: upload an audio file, or paste a YouTube / web link.")
+        try:
+            return str(fetch_audio(link))
+        except Exception as e:
+            raise gr.Error(
+                f"Couldn't download that link on the free server. {e}\n\n"
+                "Tip: download the song once, then UPLOAD it in the box above — "
+                "that always works.")
+    raise gr.Error("Add a song: upload an audio file (most reliable), or paste a link.")
 
 
 def make_montage(clips, song_file, song_link, mode, look, quality, slowmo_len, caption):
@@ -116,8 +125,10 @@ with gr.Blocks(title="Valorant Montage Maker") as demo:
                             file_count="single",
                             file_types=[".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"],
                             type="filepath")
-    song_link = gr.Textbox(label="…or paste a YouTube / web link instead",
-                           placeholder="https://youtu.be/…")
+    song_link = gr.Textbox(
+        label="…or paste a link (best-effort — YouTube usually won't work on the "
+              "free server; uploading above is reliable)",
+        placeholder="https://youtu.be/…")
     mode = gr.Radio([BEATMATCH, FREEZE], value=BEATMATCH, label="Style")
 
     with gr.Accordion("Options", open=False):

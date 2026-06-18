@@ -47,8 +47,23 @@ def _download(source: str, out_template: str, fmt_args: list[str]) -> None:
     rc, out = _run([*base, source])
     if rc == 0:
         return
+    low = out.lower()
+    # YouTube (and others) increasingly block downloads from data-center IPs.
+    # The free web app runs in one, so this is the usual "works on my PC but not
+    # the website" cause -- give an actionable message, not a raw exit code.
+    if "not a bot" in low or "sign in to confirm" in low:
+        raise RuntimeError(
+            "The site blocked this download from this server -- YouTube does that "
+            "for cloud/data-center servers especially. On the web app, UPLOAD the "
+            "song file instead of pasting a link; on your PC it usually works from "
+            "your home connection.")
+    if "no supported javascript runtime" in low:
+        raise RuntimeError(
+            "This link needs a JavaScript runtime (Deno) that isn't installed "
+            "here. Upload the file instead, or run 'Setup (run once).bat' on your "
+            "PC -- it now installs Deno.")
     # Looks like a login/cookie wall -> retry with cookies from each browser.
-    if "cookie" in out.lower() or _needs_cookies_site(source):
+    if "cookie" in low or _needs_cookies_site(source):
         for br in _COOKIE_BROWSERS:
             print(f"  retrying with {br} cookies...")
             rc, _ = _run([*base, "--cookies-from-browser", br, source])
