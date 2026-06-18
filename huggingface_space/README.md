@@ -20,9 +20,9 @@ timestamps needed.
 - **Freeze-finisher** — plays one clutch, then eases into super slow-motion,
   with the music's drop landing on the round-win banner.
 
-**For the song, upload an audio file.** Pasting a YouTube link usually fails on
-this free server — YouTube blocks downloads from cloud servers (it works from
-the desktop app at home). Uploading always works.
+**Upload your clips and a song file.** There's no paste-a-link box — YouTube
+blocks downloads from cloud servers like this one, so uploading is the reliable
+way (the desktop app at home can still use links).
 
 Powered by the [valmontage](https://github.com/jjalww/python-video-project)
 engine. This free Space runs on CPU, so a montage takes a few minutes; the

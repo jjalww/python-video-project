@@ -21,7 +21,6 @@ from valmontage.editing.plan import pick_highlight
 from valmontage.killdetect.highlight import detect_kills_by_highlight
 from valmontage.modes.beatmatch import render_beatmatch
 from valmontage.modes.freeze_finisher import render_freeze_finisher
-from valmontage.utils.fetch import fetch_audio, is_url
 
 GRADES = ["teal_orange", "contrast_boost", "vignette_only", "none"]
 # Free Spaces have no gaming GPU, so renders are CPU/libx264. 720p30 keeps a
@@ -35,35 +34,25 @@ BEATMATCH = "Beat-match — a kill on every beat (use several clips)"
 FREEZE = "Freeze-finisher — one clutch into super slow-motion"
 
 
-def _resolve_song(song_file: str | None, song_link: str | None) -> str:
-    # Prefer the uploaded file -- it always works. A pasted link is best-effort:
-    # YouTube blocks downloads from cloud servers like this one, so it often
-    # fails here even though it works on the desktop app at home.
+def _resolve_song(song_file: str | None) -> str:
+    # The song is an uploaded file. (Pasting a link was dropped: YouTube blocks
+    # downloads from cloud servers like this one, so it just failed here.)
     if song_file:
         return song_file
-    if song_link and song_link.strip():
-        link = song_link.strip()
-        if not is_url(link):
-            raise gr.Error("The song link must start with http:// or https://")
-        try:
-            return str(fetch_audio(link))
-        except Exception as e:
-            raise gr.Error(
-                f"Couldn't download that link on the free server. {e}\n\n"
-                "Tip: download the song once, then UPLOAD it in the box above — "
-                "that always works.")
-    raise gr.Error("Add a song: upload an audio file (most reliable), or paste a link.")
+    raise gr.Error("Add a song: upload an audio file (mp3, wav, m4a…).")
 
 
-def make_montage(clips, song_file, song_link, mode, look, quality, slowmo_len, caption):
+def make_montage(clips, song_file, mode, look, quality, slowmo_len, caption):
     if not clips:
         raise gr.Error("Add at least one gameplay clip first.")
+    if not song_file:
+        raise gr.Error("Add a song: upload an audio file (mp3, wav, m4a…).")
     width, height, fps = QUALITY.get(quality, next(iter(QUALITY.values())))
     work = Path(tempfile.mkdtemp(prefix="vm_work_"))
     out_path = str(Path(tempfile.mkdtemp(prefix="vm_out_")) / "montage.mp4")
 
     yield None, "🎵 Reading the song…"
-    audio = _resolve_song(song_file, song_link)
+    audio = _resolve_song(song_file)
 
     try:
         if mode == BEATMATCH:
@@ -120,15 +109,10 @@ with gr.Blocks(title="Valorant Montage Maker") as demo:
                     file_count="multiple",
                     file_types=[".mp4", ".mov", ".mkv", ".avi", ".webm"],
                     type="filepath")
-    with gr.Row():
-        song_file = gr.File(label="Song — upload an audio file",
-                            file_count="single",
-                            file_types=[".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"],
-                            type="filepath")
-    song_link = gr.Textbox(
-        label="…or paste a link (best-effort — YouTube usually won't work on the "
-              "free server; uploading above is reliable)",
-        placeholder="https://youtu.be/…")
+    song_file = gr.File(label="Song — upload an audio file (mp3, wav, m4a…)",
+                        file_count="single",
+                        file_types=[".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"],
+                        type="filepath")
     mode = gr.Radio([BEATMATCH, FREEZE], value=BEATMATCH, label="Style")
 
     with gr.Accordion("Options", open=False):
@@ -145,7 +129,7 @@ with gr.Blocks(title="Valorant Montage Maker") as demo:
     out = gr.Video(label="Your montage")
 
     go.click(make_montage,
-             inputs=[clips, song_file, song_link, mode, look, quality, slowmo_len, caption],
+             inputs=[clips, song_file, mode, look, quality, slowmo_len, caption],
              outputs=[out, status])
 
 demo.queue()  # one render at a time; keeps long jobs from timing out
