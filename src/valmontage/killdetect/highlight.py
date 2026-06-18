@@ -18,12 +18,14 @@ killer plate paired with a red victim -- so none of those register as kills.
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from ..render import ffmpeg
 from .template import DetectionConfig, KillEvent, _kills_from_timeline, _roi_px
 
 
@@ -125,37 +127,80 @@ def count_player_kill_rows(
 HIGHLIGHT_ROI = (0.60, 0.0, 1.0, 0.20)
 
 
+def _frames_opencv(video_path, stride: int):
+    """Yield (time, BGR frame) every ``stride`` frames via OpenCV. Yields
+    nothing if the file can't be opened/decoded -- the caller then falls back
+    to FFmpeg."""
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        cap.release()
+        return
+    fps = cap.get(cv2.CAP_PROP_FPS) or 60.0
+    idx = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if idx % stride == 0:
+            yield idx / fps, frame
+        idx += 1
+    cap.release()
+
+
+def _frames_ffmpeg(video_path, stride: int):
+    """Yield (time, BGR frame) via FFmpeg-piped raw frames. FFmpeg decodes
+    codecs/containers OpenCV's bundled reader can't -- notably on headless
+    servers (the web app), where cv2.VideoCapture frequently reads nothing."""
+    info = ffmpeg.probe_video(video_path)
+    w, h, fps = info["width"], info["height"], info["fps"] or 60.0
+    sample_fps = max(1.0, fps / max(1, stride))   # match the OpenCV cadence
+    proc = subprocess.Popen(
+        ["ffmpeg", "-v", "error", "-i", str(video_path),
+         "-vf", f"fps={sample_fps:.6f}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
+        stdout=subprocess.PIPE)
+    fsize = w * h * 3
+    i = 0
+    try:
+        while True:
+            buf = proc.stdout.read(fsize)
+            if len(buf) < fsize:
+                break
+            yield i / sample_fps, np.frombuffer(buf, np.uint8).reshape(h, w, 3)
+            i += 1
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+        proc.wait()
+
+
+def _scan(frames, roi):
+    box = None
+    times: list[float] = []
+    counts: list[int] = []
+    scores: list[float] = []
+    for t, frame in frames:
+        if box is None:
+            h, w = frame.shape[:2]
+            box = _roi_px(w, h, roi)
+        x1, y1, x2, y2 = box
+        count, score = count_player_kill_rows(frame[y1:y2, x1:x2])
+        times.append(t)
+        counts.append(count)
+        scores.append(score)
+    return times, counts, scores
+
+
 def detect_kills_by_highlight(
     video_path: str | Path,
     cfg: DetectionConfig | None = None,
     roi: tuple[float, float, float, float] = HIGHLIGHT_ROI,
 ) -> list[KillEvent]:
     cfg = cfg or DetectionConfig()
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise FileNotFoundError(f"could not open video: {video_path}")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 60.0
-
-    box = None
-    times: list[float] = []
-    counts: list[int] = []
-    scores: list[float] = []
-    idx = 0
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
-        if idx % cfg.sample_stride == 0:
-            if box is None:
-                h, w = frame.shape[:2]
-                box = _roi_px(w, h, roi)
-            x1, y1, x2, y2 = box
-            count, score = count_player_kill_rows(frame[y1:y2, x1:x2])
-            times.append(idx / fps)
-            counts.append(count)
-            scores.append(score)
-        idx += 1
-    cap.release()
+    # OpenCV first (fast, what the desktop uses); if it decoded nothing -- the
+    # usual headless-server case -- fall back to FFmpeg, which can read it.
+    times, counts, scores = _scan(_frames_opencv(video_path, cfg.sample_stride), roi)
+    if len(counts) < 2:
+        times, counts, scores = _scan(_frames_ffmpeg(video_path, cfg.sample_stride), roi)
     if len(counts) < 2:  # need >=2 samples to smooth + measure dt below
         return []
 
